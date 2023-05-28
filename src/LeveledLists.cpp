@@ -639,7 +639,10 @@ namespace LeveledLists {
 		}
 
 		std::sort(leveledListVec.begin(), leveledListVec.end(), [](const RE::LEVELED_OBJECT& a, const RE::LEVELED_OBJECT& b) {
-			return a.level < b.level;
+			if (a.level != b.level)
+				return a.level < b.level;
+			else
+				return a.form->formID < b.form->formID;
 		});
 
 		if (isCleared || isDeleted || isAdded)

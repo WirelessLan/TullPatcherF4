@@ -246,7 +246,7 @@ namespace FormLists {
 
 			g_configVec.push_back(configData.value());
 
-			logger::info("{}({})", FilterTypeToString(configData->Filter), configData->FilterForm);
+			logger::info("{}({}).{}", FilterTypeToString(configData->Filter), configData->FilterForm, ElementTypeToString(configData->Element));
 			for (std::size_t ii = 0; ii < configData->Operations.size(); ii++) {
 				if (ii < configData->Operations.size() - 1)
 					logger::info("    .{}({})", OperationTypeToString(configData->Operations[ii].OpType),
