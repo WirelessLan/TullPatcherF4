@@ -97,7 +97,7 @@ namespace LeveledLists {
 		LeveldListParser(Configs::ConfigReader& a_configReader) : Configs::Parser<ConfigData>(a_configReader) {}
 
 		std::optional<ConfigData> Parse() override {
-			if (reader.EndOfFile() || reader.Lookup().empty())
+			if (reader.EndOfFile() || reader.LookAhead().empty())
 				return std::nullopt;
 
 			ConfigData configData{};
@@ -114,7 +114,7 @@ namespace LeveledLists {
 			if (!parseElement(configData))
 				return std::nullopt;
 
-			token = reader.Lookup();
+			token = reader.LookAhead();
 			if (token == "=") {
 				if (!parseAssignment(configData))
 					return std::nullopt;
@@ -136,7 +136,7 @@ namespace LeveledLists {
 					return std::nullopt;
 
 				while (true) {
-					token = reader.Lookup();
+					token = reader.LookAhead();
 					if (token == ";") {
 						reader.GetToken();
 						break;

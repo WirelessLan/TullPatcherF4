@@ -6,7 +6,7 @@ namespace Configs {
 		ConfigReader(std::string_view a_path);
 		bool EndOfFile();
 		std::string_view GetToken();
-		std::string_view Lookup();
+		std::string_view LookAhead();
 		std::size_t GetLastLine();
 		std::size_t GetLastLineIndex();
 

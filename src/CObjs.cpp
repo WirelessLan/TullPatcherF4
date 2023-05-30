@@ -83,7 +83,7 @@ namespace CObjs {
 		CObjParser(Configs::ConfigReader& a_configReader) : Configs::Parser<ConfigData>(a_configReader) {}
 
 		std::optional<ConfigData> Parse() override {
-			if (reader.EndOfFile() || reader.Lookup().empty())
+			if (reader.EndOfFile() || reader.LookAhead().empty())
 				return std::nullopt;
 
 			ConfigData configData{};
@@ -110,7 +110,7 @@ namespace CObjs {
 				return std::nullopt;
 
 			while (true) {
-				token = reader.Lookup();
+				token = reader.LookAhead();
 				if (token == ";") {
 					reader.GetToken();
 					break;

@@ -121,7 +121,7 @@ namespace Configs {
 		return std::string_view(_fileContents).substr(startIdx, tokenLen);
 	}
 
-	std::string_view ConfigReader::Lookup() {
+	std::string_view ConfigReader::LookAhead() {
 		std::size_t lastIndex = _currIndex;
 		std::size_t lastLine = _currLine;
 		std::string_view token = GetToken();
