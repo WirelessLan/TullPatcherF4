@@ -19,13 +19,15 @@ namespace Races {
 
 	enum class ElementType {
 		kMaleSkeletalModel,
-		kFemaleSkeletalModel
+		kFemaleSkeletalModel,
+		kBodyPartData
 	};
 
 	std::string_view ElementTypeToString(ElementType a_value) {
 		switch (a_value) {
 		case ElementType::kMaleSkeletalModel: return "MaleSkeletalModel";
 		case ElementType::kFemaleSkeletalModel: return "FemaleSkeletalModel";
+		case ElementType::kBodyPartData: return "BodyPartData";
 		default: return std::string_view{};
 		}
 	}
@@ -40,6 +42,7 @@ namespace Races {
 	struct PatchData {
 		std::optional<std::string> MaleSkeletalModel;
 		std::optional<std::string> FemaleSkeletalModel;
+		std::optional<RE::BGSBodyPartData*> BodyPartData;
 	};
 
 	std::vector<ConfigData> g_configVec;
@@ -116,6 +119,8 @@ namespace Races {
 				a_config.Element = ElementType::kMaleSkeletalModel;
 			else if (token == "FemaleSkeletalModel")
 				a_config.Element = ElementType::kFemaleSkeletalModel;
+			else if (token == "BodyPartData")
+				a_config.Element = ElementType::kBodyPartData;
 			else {
 				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -131,17 +136,26 @@ namespace Races {
 				return false;
 			}
 
-			token = reader.GetToken();
-			if (!token.starts_with('\"')) {
-				logger::warn("Line {}, Col {}: {} must be a string.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
-				return false;
-			}
-			else if (!token.ends_with('\"')) {
-				logger::warn("Line {}, Col {}: String must end with '\"'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
-			}
+			if (a_config.Element == ElementType::kMaleSkeletalModel || a_config.Element == ElementType::kFemaleSkeletalModel) {
+				token = reader.GetToken();
+				if (!token.starts_with('\"')) {
+					logger::warn("Line {}, Col {}: {} must be a string.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
+					return false;
+				}
+				else if (!token.ends_with('\"')) {
+					logger::warn("Line {}, Col {}: String must end with '\"'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return false;
+				}
 
-			a_config.AssignValue = token.substr(1, token.length() - 2);
+				a_config.AssignValue = token.substr(1, token.length() - 2);
+			}
+			else if (a_config.Element == ElementType::kBodyPartData) {
+				auto raceForm = parseForm();
+				if (!raceForm.has_value())
+					return false;
+
+				a_config.AssignValue = raceForm.value();
+			}
 
 			return true;
 		}
@@ -191,7 +205,10 @@ namespace Races {
 
 			g_configVec.push_back(configData.value());
 
-			logger::info("{}({}).{} = \"{}\";", FilterTypeToString(configData->Filter), configData->FilterForm, ElementTypeToString(configData->Element), configData->AssignValue.value());
+			if (configData->Element == ElementType::kBodyPartData)
+				logger::info("{}({}).{} = {};", FilterTypeToString(configData->Filter), configData->FilterForm, ElementTypeToString(configData->Element), configData->AssignValue.value());
+			else
+				logger::info("{}({}).{} = \"{}\";", FilterTypeToString(configData->Filter), configData->FilterForm, ElementTypeToString(configData->Element), configData->AssignValue.value());
 		}
 	}
 
@@ -238,6 +255,24 @@ namespace Races {
 					if (configData.AssignValue.has_value())
 						g_patchMap[race].FemaleSkeletalModel = configData.AssignValue.value();
 				}
+				else if (configData.Element == ElementType::kBodyPartData) {
+					if (!configData.AssignValue.has_value())
+						continue;
+
+					RE::TESForm* bodyPartDataForm = Utils::GetFormFromString(configData.AssignValue.value());
+					if (!bodyPartDataForm) {
+						logger::warn("Invalid Form: '{}'.", configData.AssignValue.value());
+						continue;
+					}
+
+					RE::BGSBodyPartData* bodyPartData = bodyPartDataForm->As<RE::BGSBodyPartData>();
+					if (!bodyPartData) {
+						logger::warn("'{}' is not a BodyPartData.", configData.AssignValue.value());
+						continue;
+					}
+
+					g_patchMap[race].BodyPartData = bodyPartData;
+				}
 			}
 		}
 
@@ -253,8 +288,12 @@ namespace Races {
 		for (const auto& patchData : g_patchMap) {
 			if (patchData.second.MaleSkeletalModel.has_value())
 				patchData.first->skeletonModel[0].SetModel(patchData.second.MaleSkeletalModel.value().c_str());
+
 			if (patchData.second.FemaleSkeletalModel.has_value())
 				patchData.first->skeletonModel[1].SetModel(patchData.second.FemaleSkeletalModel.value().c_str());
+
+			if (patchData.second.BodyPartData.has_value())
+				patchData.first->bodyPartData = patchData.second.BodyPartData.value();
 		}
 
 		logger::info("======================== Finished patching for Race ========================");
