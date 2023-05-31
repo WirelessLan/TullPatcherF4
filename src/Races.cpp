@@ -1,6 +1,7 @@
 #include "Races.h"
 
 #include <regex>
+#include <any>
 
 #include "Configs.h"
 #include "Utils.h"
@@ -20,7 +21,8 @@ namespace Races {
 	enum class ElementType {
 		kMaleSkeletalModel,
 		kFemaleSkeletalModel,
-		kBodyPartData
+		kBodyPartData,
+		kBipedObjectSlots
 	};
 
 	std::string_view ElementTypeToString(ElementType a_value) {
@@ -28,6 +30,7 @@ namespace Races {
 		case ElementType::kMaleSkeletalModel: return "MaleSkeletalModel";
 		case ElementType::kFemaleSkeletalModel: return "FemaleSkeletalModel";
 		case ElementType::kBodyPartData: return "BodyPartData";
+		case ElementType::kBipedObjectSlots: return "BipedObjectSlots";
 		default: return std::string_view{};
 		}
 	}
@@ -36,13 +39,14 @@ namespace Races {
 		FilterType Filter;
 		std::string FilterForm;
 		ElementType Element;
-		std::optional<std::string> AssignValue;
+		std::optional<std::any> AssignValue;
 	};
 
 	struct PatchData {
 		std::optional<std::string> MaleSkeletalModel;
 		std::optional<std::string> FemaleSkeletalModel;
 		std::optional<RE::BGSBodyPartData*> BodyPartData;
+		std::optional<std::uint32_t> BipedObjectSlots;
 	};
 
 	std::vector<ConfigData> g_configVec;
@@ -121,6 +125,8 @@ namespace Races {
 				a_config.Element = ElementType::kFemaleSkeletalModel;
 			else if (token == "BodyPartData")
 				a_config.Element = ElementType::kBodyPartData;
+			else if (token == "BipedObjectSlots")
+				a_config.Element = ElementType::kBipedObjectSlots;
 			else {
 				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -147,17 +153,70 @@ namespace Races {
 					return false;
 				}
 
-				a_config.AssignValue = token.substr(1, token.length() - 2);
+				std::string value = std::string(token.substr(1, token.length() - 2));
+				a_config.AssignValue = std::any(value);
 			}
 			else if (a_config.Element == ElementType::kBodyPartData) {
 				auto bodyPartDataForm = parseForm();
 				if (!bodyPartDataForm.has_value())
 					return false;
 
-				a_config.AssignValue = bodyPartDataForm.value();
+				a_config.AssignValue = std::any(bodyPartDataForm.value());
+			}
+			else if (a_config.Element == ElementType::kBipedObjectSlots) {
+				std::uint32_t bipedObjectSlotsValue = 0;
+				
+				auto bipedSlot = parseBipedSlot();
+				if (!bipedSlot.has_value())
+					return false;
+
+				bipedObjectSlotsValue |= 1 << (bipedSlot.value() - 30);
+
+				while (true) {
+					token = reader.LookAhead();
+					if (token == ";")
+						break;
+
+					token = reader.GetToken();
+					if (token != "|") {
+						logger::warn("Line {}, Col {}: Syntax error. Expected '|' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+						return false;
+					}
+
+					bipedSlot = parseBipedSlot();
+					if (!bipedSlot.has_value())
+						return false;
+
+					bipedObjectSlotsValue |= 1 << (bipedSlot.value() - 30);
+				}
+
+				a_config.AssignValue = std::any(bipedObjectSlotsValue);
 			}
 
 			return true;
+		}
+
+		std::optional<std::uint32_t> parseBipedSlot() {
+			unsigned long parsedValue;
+
+			auto token = reader.GetToken();
+			if (token.empty() || token == "|" || token == ";") {
+				logger::warn("Line {}, Col {}: Expected BipedSlot '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				return std::nullopt;
+			}
+
+			auto parsingResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+			if (parsingResult.ec != std::errc()) {
+				logger::warn("Line {}, Col {}: Failed to parse bipedslot '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				return std::nullopt;
+			}
+
+			if (parsedValue < 30 || parsedValue > 61) {
+				logger::warn("Line {}, Col {}: Failed to parse bipedslot '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				return std::nullopt;
+			}
+
+			return static_cast<std::uint32_t>(parsedValue);
 		}
 
 		std::optional<std::string> parseForm() {
@@ -192,6 +251,20 @@ namespace Races {
 		}
 	};
 
+	std::string GetBipedSlots(std::uint32_t a_bipedObjSlots) {
+		std::string retStr;
+
+		for (std::size_t ii = 0; ii < 32; ii++) {
+			if (a_bipedObjSlots & (1 << ii))
+				retStr += std::to_string(ii + 30) + " | ";
+		}
+
+		if (retStr.empty())
+			return retStr;
+
+		return retStr.substr(0, retStr.size() - 3);
+	}
+
 	void ReadConfig(std::string_view a_path) {
 		Configs::ConfigReader reader(a_path);
 
@@ -206,9 +279,14 @@ namespace Races {
 			g_configVec.push_back(configData.value());
 
 			if (configData->Element == ElementType::kBodyPartData)
-				logger::info("{}({}).{} = {};", FilterTypeToString(configData->Filter), configData->FilterForm, ElementTypeToString(configData->Element), configData->AssignValue.value());
+				logger::info("{}({}).{} = {};", FilterTypeToString(configData->Filter), configData->FilterForm, 
+					ElementTypeToString(configData->Element), std::any_cast<std::string>(configData->AssignValue.value()));
+			else if (configData->Element == ElementType::kBipedObjectSlots)
+				logger::info("{}({}).{} = {};", FilterTypeToString(configData->Filter), configData->FilterForm,
+					ElementTypeToString(configData->Element), GetBipedSlots(std::any_cast<std::uint32_t>(configData->AssignValue.value())));
 			else
-				logger::info("{}({}).{} = \"{}\";", FilterTypeToString(configData->Filter), configData->FilterForm, ElementTypeToString(configData->Element), configData->AssignValue.value());
+				logger::info("{}({}).{} = \"{}\";", FilterTypeToString(configData->Filter), configData->FilterForm, 
+					ElementTypeToString(configData->Element), std::any_cast<std::string>(configData->AssignValue.value()));
 		}
 	}
 
@@ -249,29 +327,34 @@ namespace Races {
 
 				if (configData.Element == ElementType::kMaleSkeletalModel) {
 					if (configData.AssignValue.has_value())
-						g_patchMap[race].MaleSkeletalModel = configData.AssignValue.value();
+						g_patchMap[race].MaleSkeletalModel = std::any_cast<std::string>(configData.AssignValue.value());
 				}
 				else if (configData.Element == ElementType::kFemaleSkeletalModel) {
 					if (configData.AssignValue.has_value())
-						g_patchMap[race].FemaleSkeletalModel = configData.AssignValue.value();
+						g_patchMap[race].FemaleSkeletalModel = std::any_cast<std::string>(configData.AssignValue.value());
 				}
 				else if (configData.Element == ElementType::kBodyPartData) {
 					if (!configData.AssignValue.has_value())
 						continue;
 
-					RE::TESForm* bodyPartDataForm = Utils::GetFormFromString(configData.AssignValue.value());
+					std::string bodyPartDataFormStr = std::any_cast<std::string>(configData.AssignValue.value());
+					RE::TESForm* bodyPartDataForm = Utils::GetFormFromString(bodyPartDataFormStr);
 					if (!bodyPartDataForm) {
-						logger::warn("Invalid Form: '{}'.", configData.AssignValue.value());
+						logger::warn("Invalid Form: '{}'.", bodyPartDataFormStr);
 						continue;
 					}
 
 					RE::BGSBodyPartData* bodyPartData = bodyPartDataForm->As<RE::BGSBodyPartData>();
 					if (!bodyPartData) {
-						logger::warn("'{}' is not a BodyPartData.", configData.AssignValue.value());
+						logger::warn("'{}' is not a BodyPartData.", bodyPartDataFormStr);
 						continue;
 					}
 
 					g_patchMap[race].BodyPartData = bodyPartData;
+				}
+				else if (configData.Element == ElementType::kBipedObjectSlots) {
+					if (configData.AssignValue.has_value())
+						g_patchMap[race].BipedObjectSlots = std::any_cast<std::uint32_t>(configData.AssignValue.value());
 				}
 			}
 		}
@@ -294,6 +377,9 @@ namespace Races {
 
 			if (patchData.second.BodyPartData.has_value())
 				patchData.first->bodyPartData = patchData.second.BodyPartData.value();
+
+			if (patchData.second.BipedObjectSlots.has_value())
+				patchData.first->bipedModelData.bipedObjectSlots = patchData.second.BipedObjectSlots.value();
 		}
 
 		logger::info("======================== Finished patching for Race ========================");
