@@ -150,11 +150,11 @@ namespace Races {
 				a_config.AssignValue = token.substr(1, token.length() - 2);
 			}
 			else if (a_config.Element == ElementType::kBodyPartData) {
-				auto raceForm = parseForm();
-				if (!raceForm.has_value())
+				auto bodyPartDataForm = parseForm();
+				if (!bodyPartDataForm.has_value())
 					return false;
 
-				a_config.AssignValue = raceForm.value();
+				a_config.AssignValue = bodyPartDataForm.value();
 			}
 
 			return true;
