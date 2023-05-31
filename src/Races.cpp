@@ -253,16 +253,17 @@ namespace Races {
 
 	std::string GetBipedSlots(std::uint32_t a_bipedObjSlots) {
 		std::string retStr;
+		std::string separtor = " | ";
 
 		for (std::size_t ii = 0; ii < 32; ii++) {
 			if (a_bipedObjSlots & (1 << ii))
-				retStr += std::to_string(ii + 30) + " | ";
+				retStr += std::to_string(ii + 30) + separtor;
 		}
 
 		if (retStr.empty())
 			return retStr;
 
-		return retStr.substr(0, retStr.size() - 3);
+		return retStr.substr(0, retStr.size() - separtor.size());
 	}
 
 	void ReadConfig(std::string_view a_path) {
