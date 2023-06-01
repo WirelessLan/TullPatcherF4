@@ -2,7 +2,6 @@
 #include "FormLists.h"
 #include "Keywords.h"
 #include "LeveledLists.h"
-#include "NPCs.h"
 #include "Races.h"
 
 void Patch() {
@@ -12,7 +11,6 @@ void Patch() {
 	FormLists::Patch();
 	Keywords::Patch();
 	LeveledLists::Patch();
-	NPCs::Patch();
 	Races::Patch();
 
 	auto patchEnd = std::chrono::high_resolution_clock::now();
@@ -81,7 +79,6 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface * a_
 	FormLists::ReadConfigs();
 	Keywords::ReadConfigs();
 	LeveledLists::ReadConfigs();
-	NPCs::ReadConfigs();
 	Races::ReadConfigs();
 
 	const F4SE::MessagingInterface* message = F4SE::GetMessagingInterface();

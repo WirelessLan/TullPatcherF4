@@ -7,8 +7,6 @@ set(SOURCES
 	src/Keywords.cpp
 	src/LeveledLists.h
 	src/LeveledLists.cpp
-	src/NPCs.h
-	src/NPCs.cpp
 	src/Races.h
 	src/Races.cpp
 	src/Configs.h
