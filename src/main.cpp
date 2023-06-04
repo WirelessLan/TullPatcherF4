@@ -1,5 +1,6 @@
 #include "CObjs.h"
 #include "FormLists.h"
+#include "Ingestibles.h"
 #include "Keywords.h"
 #include "LeveledLists.h"
 #include "Races.h"
@@ -9,6 +10,7 @@ void Patch() {
 
 	CObjs::Patch();
 	FormLists::Patch();
+	Ingestibles::Patch();
 	Keywords::Patch();
 	LeveledLists::Patch();
 	Races::Patch();
@@ -77,6 +79,7 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface * a_
 
 	CObjs::ReadConfigs();
 	FormLists::ReadConfigs();
+	Ingestibles::ReadConfigs();
 	Keywords::ReadConfigs();
 	LeveledLists::ReadConfigs();
 	Races::ReadConfigs();

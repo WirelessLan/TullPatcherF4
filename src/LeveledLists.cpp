@@ -403,7 +403,7 @@ namespace LeveledLists {
 		}
 	};
 
-	void readConfig(std::string_view a_path) {
+	void ReadConfig(std::string_view a_path) {
 		Configs::ConfigReader reader(a_path);
 		while (!reader.EndOfFile()) {
 			LeveldListParser parser(reader);
@@ -418,34 +418,20 @@ namespace LeveledLists {
 			if (configData->Element == ElementType::kEntries) {
 				logger::info("{}({}).{}", FilterTypeToString(configData->Filter), configData->FilterForm, ElementTypeToString(configData->Element));
 				for (std::size_t ii = 0; ii < configData->Operations.size(); ii++) {
-					if (ii < configData->Operations.size() - 1) {
-						if (configData->Operations[ii].OpType == OperationType::kClear)
-							logger::info("    .{}()", OperationTypeToString(configData->Operations[ii].OpType));
-						else if (configData->Operations[ii].OpType == OperationType::kDelete)
-							logger::info("    .{}({}, {})", OperationTypeToString(configData->Operations[ii].OpType),
-								configData->Operations[ii].OpData->Level,
-								configData->Operations[ii].OpData->Form);
-						else
-							logger::info("    .{}({}, {}, {}, {})", OperationTypeToString(configData->Operations[ii].OpType),
-								configData->Operations[ii].OpData->Level,
-								configData->Operations[ii].OpData->Form,
-								configData->Operations[ii].OpData->Count,
-								configData->Operations[ii].OpData->ChanceNone);
-					}
-					else {
-						if (configData->Operations[ii].OpType == OperationType::kClear)
-							logger::info("    .{}();", OperationTypeToString(configData->Operations[ii].OpType));
-						else if (configData->Operations[ii].OpType == OperationType::kDelete)
-							logger::info("    .{}({}, {});", OperationTypeToString(configData->Operations[ii].OpType),
-								configData->Operations[ii].OpData->Level,
-								configData->Operations[ii].OpData->Form);
-						else
-							logger::info("    .{}({}, {}, {}, {});", OperationTypeToString(configData->Operations[ii].OpType),
-								configData->Operations[ii].OpData->Level,
-								configData->Operations[ii].OpData->Form,
-								configData->Operations[ii].OpData->Count,
-								configData->Operations[ii].OpData->ChanceNone);
-					}
+					std::string opLog;
+					if (configData->Operations[ii].OpType == OperationType::kClear)
+						opLog = fmt::format(".{}()", OperationTypeToString(configData->Operations[ii].OpType));
+					else
+						opLog = fmt::format(".{}({}, {}, {}, {})", OperationTypeToString(configData->Operations[ii].OpType),
+							configData->Operations[ii].OpData->Level,
+							configData->Operations[ii].OpData->Form,
+							configData->Operations[ii].OpData->Count,
+							configData->Operations[ii].OpData->ChanceNone);
+
+					if (ii == configData->Operations.size() - 1)
+						opLog += ";";
+
+					logger::info("    {}", opLog);
 				}
 			}
 			else {
@@ -468,7 +454,7 @@ namespace LeveledLists {
 
 			std::string path = iter.path().string();
 			logger::info("=========== Reading LeveledList config file: {} ===========", path);
-			readConfig(path);
+			ReadConfig(path);
 			logger::info("");
 		}
 	}

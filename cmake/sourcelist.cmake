@@ -3,6 +3,8 @@ set(SOURCES
 	src/CObjs.cpp
 	src/FormLists.h
 	src/FormLists.cpp
+	src/Ingestibles.h
+	src/Ingestibles.cpp
 	src/Keywords.h
 	src/Keywords.cpp
 	src/LeveledLists.h

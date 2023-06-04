@@ -233,7 +233,7 @@ namespace FormLists {
 		}
 	};
 
-	void readConfig(std::string_view a_path) {
+	void ReadConfig(std::string_view a_path) {
 		Configs::ConfigReader reader(a_path);
 
 		while (!reader.EndOfFile()) {
@@ -248,12 +248,13 @@ namespace FormLists {
 
 			logger::info("{}({}).{}", FilterTypeToString(configData->Filter), configData->FilterForm, ElementTypeToString(configData->Element));
 			for (std::size_t ii = 0; ii < configData->Operations.size(); ii++) {
-				if (ii < configData->Operations.size() - 1)
-					logger::info("    .{}({})", OperationTypeToString(configData->Operations[ii].OpType),
-						configData->Operations[ii].OpForm.has_value() ? configData->Operations[ii].OpForm.value() : ""sv);
-				else
-					logger::info("    .{}({});", OperationTypeToString(configData->Operations[ii].OpType),
-						configData->Operations[ii].OpForm.has_value() ? configData->Operations[ii].OpForm.value() : ""sv);
+				std::string opLog = fmt::format(".{}({})", OperationTypeToString(configData->Operations[ii].OpType),
+						configData->Operations[ii].OpForm.has_value() ? configData->Operations[ii].OpForm.value() : "");
+
+				if (ii == configData->Operations.size() - 1)
+					opLog += ";";
+
+				logger::info("    {}", opLog);
 			}
 		}
 	}
@@ -271,7 +272,7 @@ namespace FormLists {
 
 			std::string path = iter.path().string();
 			logger::info("=========== Reading FormList config file: {} ===========", path);
-			readConfig(path);
+			ReadConfig(path);
 			logger::info("");
 		}
 	}
