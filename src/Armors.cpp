@@ -1,11 +1,11 @@
-#include "Keywords.h"
+#include "Armors.h"
 
 #include <regex>
 
 #include "Configs.h"
 #include "Utils.h"
 
-namespace Keywords {
+namespace Armors {
 	enum class FilterType {
 		kFormID
 	};
@@ -18,12 +18,12 @@ namespace Keywords {
 	}
 
 	enum class ElementType {
-		kFullName
+		kBipedObjectSlots,
 	};
 
 	std::string_view ElementTypeToString(ElementType a_value) {
 		switch (a_value) {
-		case ElementType::kFullName: return "FullName";
+		case ElementType::kBipedObjectSlots: return "BipedObjectSlots";
 		default: return std::string_view{};
 		}
 	}
@@ -32,19 +32,19 @@ namespace Keywords {
 		FilterType Filter;
 		std::string FilterForm;
 		ElementType Element;
-		std::optional<std::string> AssignValue;
+		std::optional<std::uint32_t> AssignValue;
 	};
 
 	struct PatchData {
-		std::optional<std::string> FullName;
+		std::optional<std::uint32_t> BipedObjectSlots;
 	};
 
 	std::vector<ConfigData> g_configVec;
-	std::unordered_map<RE::BGSKeyword*, PatchData> g_patchMap;
+	std::unordered_map<RE::TESObjectARMO*, PatchData> g_patchMap;
 
-	class KeywordParser : public Configs::Parser<ConfigData> {
+	class ArmorParser : public Configs::Parser<ConfigData> {
 	public:
-		KeywordParser(Configs::ConfigReader& a_configReader) : Configs::Parser<ConfigData>(a_configReader) {}
+		ArmorParser(Configs::ConfigReader& a_configReader) : Configs::Parser<ConfigData>(a_configReader) {}
 
 		std::optional<ConfigData> Parse() override {
 			if (reader.EndOfFile() || reader.LookAhead().empty())
@@ -109,8 +109,8 @@ namespace Keywords {
 
 		bool parseElement(ConfigData& a_config) {
 			auto token = reader.GetToken();
-			if (token == "FullName")
-				a_config.Element = ElementType::kFullName;
+			if (token == "BipedObjectSlots")
+				a_config.Element = ElementType::kBipedObjectSlots;
 			else {
 				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -126,19 +126,66 @@ namespace Keywords {
 				return false;
 			}
 
-			token = reader.GetToken();
-			if (!token.starts_with('\"')) {
-				logger::warn("Line {}, Col {}: FullName must be a string.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
-			}
-			else if (!token.ends_with('\"')) {
-				logger::warn("Line {}, Col {}: String must end with '\"'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
-			}
+			if (a_config.Element == ElementType::kBipedObjectSlots) {
+				std::uint32_t bipedObjectSlotsValue = 0;
 
-			a_config.AssignValue = token.substr(1, token.length() - 2);
+				auto bipedSlot = parseBipedSlot();
+				if (!bipedSlot.has_value())
+					return false;
+
+				if (bipedSlot.value() != 0)
+					bipedObjectSlotsValue |= 1 << (bipedSlot.value() - 30);
+
+				while (true) {
+					token = reader.LookAhead();
+					if (token == ";")
+						break;
+
+					token = reader.GetToken();
+					if (token != "|") {
+						logger::warn("Line {}, Col {}: Syntax error. Expected '|' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+						return false;
+					}
+
+					bipedSlot = parseBipedSlot();
+					if (!bipedSlot.has_value())
+						return false;
+
+					if (bipedSlot.value() != 0)
+						bipedObjectSlotsValue |= 1 << (bipedSlot.value() - 30);
+				}
+
+				a_config.AssignValue = bipedObjectSlotsValue;
+			}
+			else {
+				logger::warn("Line {}, Col {}: Invalid Assignment to {}.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
+				return false;
+			}
 
 			return true;
+		}
+
+		std::optional<std::uint32_t> parseBipedSlot() {
+			unsigned long parsedValue;
+
+			auto token = reader.GetToken();
+			if (token.empty() || token == "|" || token == ";") {
+				logger::warn("Line {}, Col {}: Expected BipedSlot '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				return std::nullopt;
+			}
+
+			auto parsingResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+			if (parsingResult.ec != std::errc()) {
+				logger::warn("Line {}, Col {}: Failed to parse bipedSlot '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				return std::nullopt;
+			}
+
+			if (parsedValue != 0 && (parsedValue < 30 || parsedValue > 61)) {
+				logger::warn("Line {}, Col {}: Failed to parse bipedSlot '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				return std::nullopt;
+			}
+
+			return static_cast<std::uint32_t>(parsedValue);
 		}
 
 		std::optional<std::string> parseForm() {
@@ -173,11 +220,29 @@ namespace Keywords {
 		}
 	};
 
+	std::string GetBipedSlots(std::uint32_t a_bipedObjSlots) {
+		std::string retStr;
+		std::string separtor = " | ";
+
+		if (a_bipedObjSlots == 0)
+			return "0";
+
+		for (std::size_t ii = 0; ii < 32; ii++) {
+			if (a_bipedObjSlots & (1 << ii))
+				retStr += std::to_string(ii + 30) + separtor;
+		}
+
+		if (retStr.empty())
+			return retStr;
+
+		return retStr.substr(0, retStr.size() - separtor.size());
+	}
+
 	void ReadConfig(std::string_view a_path) {
 		Configs::ConfigReader reader(a_path);
 
 		while (!reader.EndOfFile()) {
-			KeywordParser parser(reader);
+			ArmorParser parser(reader);
 			auto configData = parser.Parse();
 			if (!configData.has_value()) {
 				parser.RecoverFromError();
@@ -186,12 +251,14 @@ namespace Keywords {
 
 			g_configVec.push_back(configData.value());
 
-			logger::info("{}({}).{} = \"{}\";", FilterTypeToString(configData->Filter), configData->FilterForm, ElementTypeToString(configData->Element), configData->AssignValue.value());
+			if (configData->Element == ElementType::kBipedObjectSlots)
+				logger::info("{}({}).{} = {};", FilterTypeToString(configData->Filter), configData->FilterForm,
+					ElementTypeToString(configData->Element), GetBipedSlots(configData->AssignValue.value()));
 		}
 	}
 
 	void ReadConfigs() {
-		const std::filesystem::path configDir{ "Data\\" + std::string(Version::PROJECT) + "\\Keyword" };
+		const std::filesystem::path configDir{ "Data\\" + std::string(Version::PROJECT) + "\\Armor" };
 		if (!std::filesystem::exists(configDir))
 			return;
 
@@ -205,14 +272,14 @@ namespace Keywords {
 				continue;
 
 			std::string path = iter.path().string();
-			logger::info("=========== Reading Keyword config file: {} ===========", path);
+			logger::info("=========== Reading Armor config file: {} ===========", path);
 			ReadConfig(path);
 			logger::info("");
 		}
 	}
 
-	 void Prepare(const std::vector<ConfigData>& a_configVec) {
-		logger::info("======================== Start preparing patch for Keyword ========================");
+	void Prepare(const std::vector<ConfigData>& a_configVec) {
+		logger::info("======================== Start preparing patch for Armor ========================");
 
 		for (const auto& configData : a_configVec) {
 			if (configData.Filter == FilterType::kFormID) {
@@ -222,46 +289,34 @@ namespace Keywords {
 					continue;
 				}
 
-				RE::BGSKeyword* keyword = filterForm->As<RE::BGSKeyword>();
-				if (!keyword) {
-					logger::warn("'{}' is not a Keyword.", configData.FilterForm);
+				RE::TESObjectARMO* armo = filterForm->As<RE::TESObjectARMO>();
+				if (!armo) {
+					logger::warn("'{}' is not a Armor.", configData.FilterForm);
 					continue;
 				}
 
-				if (configData.Element == ElementType::kFullName) {
+				if (configData.Element == ElementType::kBipedObjectSlots) {
 					if (configData.AssignValue.has_value())
-						g_patchMap[keyword].FullName = configData.AssignValue.value();
+						g_patchMap[armo].BipedObjectSlots = configData.AssignValue.value();
 				}
 			}
 		}
 
-		logger::info("======================== Finished preparing patch for Keyword ========================");
+		logger::info("======================== Finished preparing patch for Armor ========================");
 		logger::info("");
 	}
-
-	 void SetKeywordFullName(RE::BGSKeyword* a_keyword, std::string_view a_fullName) {
-		 if (!a_keyword)
-			 return;
-
-		 RE::BGSLocalizedString newFullName{};
-		 newFullName = a_fullName;
-
-		 using func_t = void(*)(RE::TESForm*, RE::BGSLocalizedString&);
-		 REL::Relocation<func_t> func{ REL::ID(1548495) };
-		 func(a_keyword, newFullName);
-	 }
 
 	void Patch() {
 		Prepare(g_configVec);
 
-		logger::info("======================== Start patching for Keyword ========================");
+		logger::info("======================== Start patching for Armor ========================");
 
 		for (const auto& patchData : g_patchMap) {
-			if (patchData.second.FullName.has_value())
-				SetKeywordFullName(patchData.first, patchData.second.FullName.value());
+			if (patchData.second.BipedObjectSlots.has_value())
+				patchData.first->bipedModelData.bipedObjectSlots = patchData.second.BipedObjectSlots.value();
 		}
 
-		logger::info("======================== Finished patching for Keyword ========================");
+		logger::info("======================== Finished patching for Armor ========================");
 		logger::info("");
 
 		g_configVec.clear();

@@ -281,6 +281,9 @@ namespace CObjs {
 
 	void ReadConfigs() {
 		const std::filesystem::path configDir{ "Data\\" + std::string(Version::PROJECT) + "\\ConstructibleObject" };
+		if (!std::filesystem::exists(configDir))
+			return;
+
 		const std::regex filter(".*\\.cfg", std::regex_constants::icase);
 		const std::filesystem::directory_iterator dir_iter(configDir);
 		for (auto& iter : dir_iter) {

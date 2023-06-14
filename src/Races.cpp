@@ -22,7 +22,8 @@ namespace Races {
 		kMaleSkeletalModel,
 		kFemaleSkeletalModel,
 		kBodyPartData,
-		kBipedObjectSlots
+		kBipedObjectSlots,
+		kProperties
 	};
 
 	std::string_view ElementTypeToString(ElementType a_value) {
@@ -31,22 +32,61 @@ namespace Races {
 		case ElementType::kFemaleSkeletalModel: return "FemaleSkeletalModel";
 		case ElementType::kBodyPartData: return "BodyPartData";
 		case ElementType::kBipedObjectSlots: return "BipedObjectSlots";
+		case ElementType::kProperties: return "Properties";
+		default: return std::string_view{};
+		}
+	}
+
+	enum class OperationType {
+		kClear,
+		kSet,
+		kDelete
+	};
+
+	std::string_view OperationTypeToString(OperationType a_value) {
+		switch (a_value) {
+		case OperationType::kClear: return "Clear";
+		case OperationType::kSet: return "Set";
+		case OperationType::kDelete: return "Delete";
 		default: return std::string_view{};
 		}
 	}
 
 	struct ConfigData {
+		struct Operation {
+			struct PropertyData {
+				std::string ActorValueForm;
+				float Value;
+			};
+
+			OperationType OpType;
+			std::optional<PropertyData> OpProperty;
+		};
+
 		FilterType Filter;
 		std::string FilterForm;
 		ElementType Element;
 		std::optional<std::any> AssignValue;
+		std::vector<Operation> Operations;
 	};
 
 	struct PatchData {
+		struct PropertiesData {
+			struct Property {
+				RE::ActorValueInfo* ActorValue;
+				float Value;
+			};
+
+			bool Clear;
+			std::vector<Property> SetPropertyVec;
+			std::vector<Property> DeletePropertyVec;
+		};
+
 		std::optional<std::string> MaleSkeletalModel;
 		std::optional<std::string> FemaleSkeletalModel;
 		std::optional<RE::BGSBodyPartData*> BodyPartData;
 		std::optional<std::uint32_t> BipedObjectSlots;
+		std::optional<PropertiesData> Properties;
 	};
 
 	std::vector<ConfigData> g_configVec;
@@ -74,13 +114,43 @@ namespace Races {
 			if (!parseElement(configData))
 				return std::nullopt;
 
-			if (!parseAssignment(configData))
-				return std::nullopt;
+			token = reader.LookAhead();
+			if (token == "=") {
+				if (!parseAssignment(configData))
+					return std::nullopt;
 
-			token = reader.GetToken();
-			if (token != ";") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
+				token = reader.GetToken();
+				if (token != ";") {
+					logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return std::nullopt;
+				}
+			}
+			else {
+				token = reader.GetToken();
+				if (token != ".") {
+					logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return std::nullopt;
+				}
+
+				if (!parseOperation(configData))
+					return std::nullopt;
+
+				while (true) {
+					token = reader.LookAhead();
+					if (token == ";") {
+						reader.GetToken();
+						break;
+					}
+
+					token = reader.GetToken();
+					if (token != ".") {
+						logger::warn("Line {}, Col {}: Syntax error. Expected '.' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+						return std::nullopt;
+					}
+
+					if (!parseOperation(configData))
+						return std::nullopt;
+				}
 			}
 
 			return configData;
@@ -127,6 +197,8 @@ namespace Races {
 				a_config.Element = ElementType::kBodyPartData;
 			else if (token == "BipedObjectSlots")
 				a_config.Element = ElementType::kBipedObjectSlots;
+			else if (token == "Properties")
+				a_config.Element = ElementType::kProperties;
 			else {
 				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -170,7 +242,8 @@ namespace Races {
 				if (!bipedSlot.has_value())
 					return false;
 
-				bipedObjectSlotsValue |= 1 << (bipedSlot.value() - 30);
+				if (bipedSlot.value() != 0)
+					bipedObjectSlotsValue |= 1 << (bipedSlot.value() - 30);
 
 				while (true) {
 					token = reader.LookAhead();
@@ -187,13 +260,118 @@ namespace Races {
 					if (!bipedSlot.has_value())
 						return false;
 
-					bipedObjectSlotsValue |= 1 << (bipedSlot.value() - 30);
+					if (bipedSlot.value() != 0)
+						bipedObjectSlotsValue |= 1 << (bipedSlot.value() - 30);
 				}
 
 				a_config.AssignValue = std::any(bipedObjectSlotsValue);
 			}
+			else {
+				logger::warn("Line {}, Col {}: Invalid Assignment to {}.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
+				return false;
+			}
 
 			return true;
+		}
+
+		bool parseOperation(ConfigData& a_config) {
+			ConfigData::Operation newOp;
+
+			auto token = reader.GetToken();
+			if (token == "Clear")
+				newOp.OpType = OperationType::kClear;
+			else if (token == "Set")
+				newOp.OpType = OperationType::kSet;
+			else if (token == "Delete")
+				newOp.OpType = OperationType::kDelete;
+			else {
+				logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				return false;
+			}
+
+			if (newOp.OpType == OperationType::kClear || newOp.OpType == OperationType::kSet || newOp.OpType == OperationType::kDelete) {
+				if (a_config.Element != ElementType::kProperties) {
+					logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.",
+						reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element), OperationTypeToString(newOp.OpType));
+					return false;
+				}
+			}
+
+			token = reader.GetToken();
+			if (token != "(") {
+				logger::warn("Line {}, Col {}: Syntax error. Expected '('.", reader.GetLastLine(), reader.GetLastLineIndex());
+				return false;
+			}
+
+			if (a_config.Element == ElementType::kProperties) {
+				newOp.OpProperty = ConfigData::Operation::PropertyData{};
+
+				if (newOp.OpType != OperationType::kClear) {
+					std::optional<std::string> opForm = parseForm();
+					if (!opForm.has_value())
+						return false;
+
+					newOp.OpProperty->ActorValueForm = opForm.value();
+
+					if (newOp.OpType == OperationType::kSet) {
+						token = reader.GetToken();
+						if (token != ",") {
+							logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
+							return false;
+						}
+
+						std::optional<float> opValue = parseNumber();
+						if (!opValue.has_value())
+							return false;
+
+						newOp.OpProperty->Value = opValue.value();
+					}
+				}
+			}
+
+			token = reader.GetToken();
+			if (token != ")") {
+				logger::warn("Line {}, Col {}: Syntax error. Expected ')'.", reader.GetLastLine(), reader.GetLastLineIndex());
+				return false;
+			}
+
+			a_config.Operations.push_back(newOp);
+
+			return true;
+
+			return false;
+		}
+
+		std::optional<float> parseNumber() {
+			auto token = reader.GetToken();
+			if (token.empty() || token == ")") {
+				logger::warn("Line {}, Col {}: Expected number '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				return std::nullopt;
+			}
+
+			std::string magStr = std::string(token);
+			if (reader.LookAhead() == ".") {
+				magStr += reader.GetToken();
+
+				token = reader.GetToken();
+				if (token.empty() || token == ")") {
+					logger::warn("Line {}, Col {}: Expected number's decimal '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					return std::nullopt;
+				}
+
+				magStr += std::string(token);
+			}
+
+			float fParsedValue;
+			try {
+				fParsedValue = std::stof(magStr);
+			}
+			catch (...) {
+				logger::warn("Line {}, Col {}: Failed to parse number '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				return std::nullopt;
+			}
+
+			return fParsedValue;
 		}
 
 		std::optional<std::uint32_t> parseBipedSlot() {
@@ -211,7 +389,7 @@ namespace Races {
 				return std::nullopt;
 			}
 
-			if (parsedValue < 30 || parsedValue > 61) {
+			if (parsedValue != 0 && (parsedValue < 30 || parsedValue > 61)) {
 				logger::warn("Line {}, Col {}: Failed to parse bipedslot '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return std::nullopt;
 			}
@@ -255,6 +433,9 @@ namespace Races {
 		std::string retStr;
 		std::string separtor = " | ";
 
+		if (a_bipedObjSlots == 0)
+			return "0";
+
 		for (std::size_t ii = 0; ii < 32; ii++) {
 			if (a_bipedObjSlots & (1 << ii))
 				retStr += std::to_string(ii + 30) + separtor;
@@ -285,6 +466,26 @@ namespace Races {
 			else if (configData->Element == ElementType::kBipedObjectSlots)
 				logger::info("{}({}).{} = {};", FilterTypeToString(configData->Filter), configData->FilterForm,
 					ElementTypeToString(configData->Element), GetBipedSlots(std::any_cast<std::uint32_t>(configData->AssignValue.value())));
+			else if (configData->Element == ElementType::kProperties) {
+				logger::info("{}({}).{}", FilterTypeToString(configData->Filter), configData->FilterForm, ElementTypeToString(configData->Element));
+				for (std::size_t ii = 0; ii < configData->Operations.size(); ii++) {
+					std::string opLog;
+					
+					if (configData->Operations[ii].OpType == OperationType::kClear)
+						opLog = fmt::format(".{}()", OperationTypeToString(configData->Operations[ii].OpType));
+					else if (configData->Operations[ii].OpType == OperationType::kSet)
+						opLog = fmt::format(".{}({}, {})", OperationTypeToString(configData->Operations[ii].OpType),
+							configData->Operations[ii].OpProperty->ActorValueForm, configData->Operations[ii].OpProperty->Value);
+					else if (configData->Operations[ii].OpType == OperationType::kDelete)
+						opLog = fmt::format(".{}({})", OperationTypeToString(configData->Operations[ii].OpType),
+							configData->Operations[ii].OpProperty->ActorValueForm);
+
+					if (ii == configData->Operations.size() - 1)
+						opLog += ";";
+
+					logger::info("    {}", opLog);
+				}
+			}
 			else
 				logger::info("{}({}).{} = \"{}\";", FilterTypeToString(configData->Filter), configData->FilterForm, 
 					ElementTypeToString(configData->Element), std::any_cast<std::string>(configData->AssignValue.value()));
@@ -293,6 +494,9 @@ namespace Races {
 
 	void ReadConfigs() {
 		const std::filesystem::path configDir{ "Data\\" + std::string(Version::PROJECT) + "\\Race" };
+		if (!std::filesystem::exists(configDir))
+			return;
+
 		const std::regex filter(".*\\.cfg", std::regex_constants::icase);
 		const std::filesystem::directory_iterator dir_iter(configDir);
 		for (auto& iter : dir_iter) {
@@ -357,11 +561,88 @@ namespace Races {
 					if (configData.AssignValue.has_value())
 						g_patchMap[race].BipedObjectSlots = std::any_cast<std::uint32_t>(configData.AssignValue.value());
 				}
+				else if (configData.Element == ElementType::kProperties) {
+					PatchData& patchData = g_patchMap[race];
+
+					if (!patchData.Properties.has_value())
+						patchData.Properties = PatchData::PropertiesData{};
+
+					for (const auto& op : configData.Operations) {
+						if (op.OpType == OperationType::kClear) {
+							patchData.Properties->Clear = true;
+						}
+						else if (op.OpType == OperationType::kSet || op.OpType == OperationType::kDelete) {
+							RE::TESForm* opForm = Utils::GetFormFromString(op.OpProperty->ActorValueForm);
+							if (!opForm) {
+								logger::warn("Invalid Form: '{}'.", op.OpProperty->ActorValueForm);
+								continue;
+							}
+
+							RE::ActorValueInfo* avInfo = opForm->As<RE::ActorValueInfo>();
+							if (!avInfo) {
+								logger::warn("'{}' is not a ActorValue", op.OpProperty->ActorValueForm);
+								continue;
+							}
+
+							if (op.OpType == OperationType::kSet)
+								patchData.Properties->SetPropertyVec.push_back({ avInfo, op.OpProperty->Value });
+							else
+								patchData.Properties->DeletePropertyVec.push_back({ avInfo, 0 });
+						}
+					}
+				}
 			}
 		}
 
 		logger::info("======================== Finished preparing patch for Race ========================");
 		logger::info("");
+	}
+
+	void PatchProperties(RE::TESRace* a_race, const PatchData::PropertiesData& a_propertiesData) {
+		if (!a_race->properties)
+			return;
+
+		bool isCleared = false;
+
+		// Clear
+		if (a_propertiesData.Clear)
+			a_race->properties->clear();
+
+		// Delete
+		if (!isCleared) {
+			for (const auto& delProp : a_propertiesData.DeletePropertyVec) {
+				for (auto it = a_race->properties->begin(); it != a_race->properties->end(); it++) {
+					if (delProp.ActorValue != it->first)
+						continue;
+
+					a_race->properties->erase(it);
+					break;
+				}
+			}
+		}
+
+		// Set
+		for (const auto& setProp : a_propertiesData.SetPropertyVec) {
+			bool found = false;
+
+			for (auto& raceProp : *a_race->properties) {
+				if (setProp.ActorValue != raceProp.first)
+					continue;
+
+				found = true;
+				raceProp.second.f = setProp.Value;
+				break;
+			}
+
+			if (found)
+				continue;
+
+			RE::BSTTuple<RE::TESForm*, RE::BGSTypedFormValuePair::SharedVal> nTup;
+			nTup.first = setProp.ActorValue;
+			nTup.second.f = setProp.Value;
+
+			a_race->properties->push_back(nTup);
+		}
 	}
 
 	void Patch() {
@@ -381,6 +662,9 @@ namespace Races {
 
 			if (patchData.second.BipedObjectSlots.has_value())
 				patchData.first->bipedModelData.bipedObjectSlots = patchData.second.BipedObjectSlots.value();
+
+			if (patchData.second.Properties.has_value())
+				PatchProperties(patchData.first, patchData.second.Properties.value());
 		}
 
 		logger::info("======================== Finished patching for Race ========================");

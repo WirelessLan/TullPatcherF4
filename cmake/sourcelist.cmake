@@ -1,4 +1,8 @@
 set(SOURCES
+	src/ArmorAddons.h
+	src/ArmorAddons.cpp
+	src/Armors.h
+	src/Armors.cpp
 	src/CObjs.h
 	src/CObjs.cpp
 	src/FormLists.h

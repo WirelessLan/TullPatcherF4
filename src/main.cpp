@@ -1,3 +1,5 @@
+#include "ArmorAddons.h"
+#include "Armors.h"
 #include "CObjs.h"
 #include "FormLists.h"
 #include "Ingestibles.h"
@@ -8,6 +10,8 @@
 void Patch() {
 	auto patchStart = std::chrono::high_resolution_clock::now();
 
+	ArmorAddons::Patch();
+	Armors::Patch();
 	CObjs::Patch();
 	FormLists::Patch();
 	Ingestibles::Patch();
@@ -77,6 +81,8 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Query(const F4SE::QueryInterface * 
 extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface * a_f4se) {
 	F4SE::Init(a_f4se);
 
+	ArmorAddons::ReadConfigs();
+	Armors::ReadConfigs();
 	CObjs::ReadConfigs();
 	FormLists::ReadConfigs();
 	Ingestibles::ReadConfigs();
