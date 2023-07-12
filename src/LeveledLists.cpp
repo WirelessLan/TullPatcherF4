@@ -528,7 +528,7 @@ namespace LeveledLists {
 		if (!a_leveledList || !a_leveledList->leveledLists || a_leveledList->baseListCount == 0)
 			return retVec;
 
-		for (std::size_t ii = 0; ii < static_cast<std::size_t>(a_leveledList->baseListCount); ii++)
+		for (std::size_t ii = 0; ii < static_cast<std::uint8_t>(a_leveledList->baseListCount); ii++)
 			retVec.push_back(a_leveledList->leveledLists[ii]);
 
 		return retVec;
@@ -541,7 +541,7 @@ namespace LeveledLists {
 
 	LL_ALLOC* AllocateLL(std::size_t a_entriesCnt) {
 		RE::MemoryManager mm = RE::MemoryManager::GetSingleton();
-		return (LL_ALLOC*)mm.Allocate(sizeof(RE::LEVELED_OBJECT) * a_entriesCnt + sizeof(size_t), 0, 0);
+		return (LL_ALLOC*)mm.Allocate(sizeof(RE::LEVELED_OBJECT) * a_entriesCnt + sizeof(std::size_t), 0, 0);
 	}
 
 	void FreeLeveledListEntries(RE::LEVELED_OBJECT* a_lobj, uint32_t arg2 = 0x3) {
@@ -558,7 +558,8 @@ namespace LeveledLists {
 			return;
 
 		if (a_leveledList->leveledLists) {
-			memset(a_leveledList->leveledLists, 0, a_leveledList->baseListCount * sizeof(RE::LEVELED_OBJECT));
+			std::uint8_t listCount = static_cast<std::uint8_t>(a_leveledList->baseListCount);
+			memset(a_leveledList->leveledLists, 0, listCount * sizeof(RE::LEVELED_OBJECT));
 			FreeLeveledListEntries(a_leveledList->leveledLists);
 
 			a_leveledList->leveledLists = nullptr;
@@ -585,7 +586,7 @@ namespace LeveledLists {
 			newEntries->ll[ii] = a_entries[ii];
 
 		a_leveledList->leveledLists = newEntries->ll;
-		a_leveledList->baseListCount = static_cast<std::uint8_t>(entriesCnt);
+		a_leveledList->baseListCount = static_cast<std::int8_t>(entriesCnt);
 	}
 
 	void PatchEntries(RE::TESLeveledList* a_leveledList, const PatchData::EntriesData& a_entriesData) {
