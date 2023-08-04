@@ -5,6 +5,9 @@
 #include "Ingestibles.h"
 #include "Keywords.h"
 #include "LeveledLists.h"
+#include "Locations.h"
+#include "Outfits.h"
+#include "Quests.h"
 #include "Races.h"
 
 void Patch() {
@@ -17,6 +20,9 @@ void Patch() {
 	Ingestibles::Patch();
 	Keywords::Patch();
 	LeveledLists::Patch();
+	Locations::Patch();
+	Outfits::Patch();
+	Quests::Patch();
 	Races::Patch();
 
 	auto patchEnd = std::chrono::high_resolution_clock::now();
@@ -88,6 +94,9 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface * a_
 	Ingestibles::ReadConfigs();
 	Keywords::ReadConfigs();
 	LeveledLists::ReadConfigs();
+	Locations::ReadConfigs();
+	Outfits::ReadConfigs();
+	Quests::ReadConfigs();
 	Races::ReadConfigs();
 
 	const F4SE::MessagingInterface* message = F4SE::GetMessagingInterface();

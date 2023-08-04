@@ -13,6 +13,12 @@ set(SOURCES
 	src/Keywords.cpp
 	src/LeveledLists.h
 	src/LeveledLists.cpp
+	src/Locations.h
+	src/Locations.cpp
+	src/Outfits.h
+	src/Outfits.cpp
+	src/Quests.h
+	src/Quests.cpp
 	src/Races.h
 	src/Races.cpp
 	src/Configs.h
