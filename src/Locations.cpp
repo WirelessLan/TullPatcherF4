@@ -395,7 +395,7 @@ namespace Locations {
 				}
 
 				if (exists)
-					break;
+					continue;
 
 				a_location->AddKeyword(addKywd);
 			}
