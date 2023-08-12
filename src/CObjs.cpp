@@ -460,7 +460,6 @@ namespace CObjs {
 		logger::info("");
 	}
 
-
 	std::unordered_set<std::uint16_t> GetCategoryKeywords(RE::BGSConstructibleObject* a_cobjForm) {
 		std::unordered_set<std::uint16_t> retVec;
 

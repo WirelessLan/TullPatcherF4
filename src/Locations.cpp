@@ -1,5 +1,6 @@
 #include "Locations.h"
 
+#include <unordered_set>
 #include <regex>
 
 #include "Configs.h"
@@ -61,7 +62,7 @@ namespace Locations {
 		struct KeywordsData {
 			bool Clear = false;
 			std::vector<RE::BGSKeyword*> AddKeywordVec;
-			std::vector<RE::BGSKeyword*> AddUniqueKeywordVec;
+			std::unordered_set<RE::BGSKeyword*> AddUniqueKeywordSet;
 			std::vector<RE::BGSKeyword*> DeleteKeywordVec;
 		};
 
@@ -328,7 +329,7 @@ namespace Locations {
 							if (op.OpType == OperationType::kAdd)
 								patchData.Keywords->AddKeywordVec.push_back(keywordForm);
 							else if (op.OpType == OperationType::kAddIfNotExists)
-								patchData.Keywords->AddUniqueKeywordVec.push_back(keywordForm);
+								patchData.Keywords->AddUniqueKeywordSet.insert(keywordForm);
 							else
 								patchData.Keywords->DeleteKeywordVec.push_back(keywordForm);
 						}
@@ -349,6 +350,14 @@ namespace Locations {
 			a_location->RemoveKeyword(a_location->keywords[0]);
 	}
 
+	bool KeywordExists(RE::BGSLocation* a_location, RE::BGSKeyword* a_keyword) {
+		for (std::uint32_t ii = 0; ii < a_location->numKeywords; ii++) {
+			if (a_location->keywords[ii] == a_keyword)
+				return true;
+		}
+		return false;
+	}
+
 	void PatchKeywords(RE::BGSLocation* a_location, const PatchData::KeywordsData& a_keywordsData) {
 		bool isCleared = false;
 
@@ -362,13 +371,8 @@ namespace Locations {
 		if (!isCleared && !a_keywordsData.DeleteKeywordVec.empty()) {
 			std::vector<RE::BGSKeyword*> delVec;
 			for (const auto& delKywd : a_keywordsData.DeleteKeywordVec) {
-				for (std::uint32_t ii = 0; ii < a_location->numKeywords; ii++) {
-					if (a_location->keywords[ii] != delKywd)
-						continue;
-
+				if (KeywordExists(a_location, delKywd))
 					delVec.push_back(delKywd);
-					break;
-				}
 			}
 
 			for (auto kywd : delVec)
@@ -377,27 +381,15 @@ namespace Locations {
 
 		// Add
 		if (!a_keywordsData.AddKeywordVec.empty()) {
-			for (const auto& addKywd : a_keywordsData.AddKeywordVec) {
+			for (const auto& addKywd : a_keywordsData.AddKeywordVec)
 				a_location->AddKeyword(addKywd);
-			}
 		}
 
 		// Add if not exists
-		if (!a_keywordsData.AddUniqueKeywordVec.empty()) {
-			for (const auto& addKywd : a_keywordsData.AddUniqueKeywordVec) {
-				bool exists = false;
-				for (std::uint32_t ii = 0; ii < a_location->numKeywords; ii++) {
-					if (a_location->keywords[ii] != addKywd)
-						continue;
-
-					exists = true;
-					break;
-				}
-
-				if (exists)
-					continue;
-
-				a_location->AddKeyword(addKywd);
+		if (!a_keywordsData.AddUniqueKeywordSet.empty()) {
+			for (const auto& addKywd : a_keywordsData.AddUniqueKeywordSet) {
+				if (!KeywordExists(a_location, addKywd))
+					a_location->AddKeyword(addKywd);
 			}
 		}
 	}
