@@ -283,7 +283,7 @@ namespace LeveledLists {
 			if (opType != OperationType::kClear) {
 				opData = ConfigData::Operation::Data{};
 
-				if (opType != OperationType::kDeleteAll) {
+				if (opType == OperationType::kAdd || opType == OperationType::kDelete) {
 					token = reader.GetToken();
 					if (token.empty() || token == ",") {
 						logger::warn("Line {}, Col {}: Expected Level '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
@@ -366,7 +366,7 @@ namespace LeveledLists {
 
 					opData->ChanceNone = static_cast<std::uint8_t>(parsedValue);
 				}
-				else {
+				else if (opType == OperationType::kDeleteAll) {
 					std::optional<std::string> opForm = parseForm();
 					if (!opForm.has_value())
 						return false;
