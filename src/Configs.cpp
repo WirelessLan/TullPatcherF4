@@ -105,7 +105,7 @@ namespace Configs {
 
 				break;
 			}
-			else if (ch == '.' || ch == ',' || ch == '=' || ch == '|' || ch == '(' || ch == ')' || ch == ';') {
+			else if (ch == '.' || ch == ',' || ch == '=' || ch == '!' || ch == '&' || ch == '|' || ch == '(' || ch == ')' || ch == ';') {
 				if (tokenLen != 0) {
 					UndoGetChar();
 					break;
@@ -121,7 +121,7 @@ namespace Configs {
 		return std::string_view(_fileContents).substr(startIdx, tokenLen);
 	}
 
-	std::string_view ConfigReader::LookAhead() {
+	std::string_view ConfigReader::Peek() {
 		std::size_t lastIndex = _currIndex;
 		std::size_t lastLine = _currLine;
 		std::string_view token = GetToken();

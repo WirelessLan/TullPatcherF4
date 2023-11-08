@@ -3,7 +3,7 @@
 #include <regex>
 #include <any>
 
-#include "Configs.h"
+#include "Parsers.h"
 #include "Utils.h"
 
 namespace Races {
@@ -89,20 +89,21 @@ namespace Races {
 		std::optional<PropertiesData> Properties;
 	};
 
-	std::vector<ConfigData> g_configVec;
+	std::vector<Parsers::Statement<ConfigData>> g_configVec;
 	std::unordered_map<RE::TESRace*, PatchData> g_patchMap;
 
-	class RaceParser : public Configs::Parser<ConfigData> {
+	class RaceParser : public Parsers::Parser<ConfigData> {
 	public:
-		RaceParser(Configs::ConfigReader& a_configReader) : Configs::Parser<ConfigData>(a_configReader) {}
+		RaceParser(std::string_view a_configPath) : Parsers::Parser<ConfigData>(a_configPath) {}
 
-		std::optional<ConfigData> Parse() override {
-			if (reader.EndOfFile() || reader.LookAhead().empty())
+	protected:
+		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
+			if (reader.EndOfFile() || reader.Peek().empty())
 				return std::nullopt;
 
 			ConfigData configData{};
 
-			if (!parseFilter(configData))
+			if (!ParseFilter(configData))
 				return std::nullopt;
 
 			auto token = reader.GetToken();
@@ -111,12 +112,12 @@ namespace Races {
 				return std::nullopt;
 			}
 
-			if (!parseElement(configData))
+			if (!ParseElement(configData))
 				return std::nullopt;
 
-			token = reader.LookAhead();
+			token = reader.Peek();
 			if (token == "=") {
-				if (!parseAssignment(configData))
+				if (!ParseAssignment(configData))
 					return std::nullopt;
 
 				token = reader.GetToken();
@@ -132,11 +133,11 @@ namespace Races {
 					return std::nullopt;
 				}
 
-				if (!parseOperation(configData))
+				if (!ParseOperation(configData))
 					return std::nullopt;
 
 				while (true) {
-					token = reader.LookAhead();
+					token = reader.Peek();
 					if (token == ";") {
 						reader.GetToken();
 						break;
@@ -148,16 +149,65 @@ namespace Races {
 						return std::nullopt;
 					}
 
-					if (!parseOperation(configData))
+					if (!ParseOperation(configData))
 						return std::nullopt;
 				}
 			}
 
-			return configData;
+			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
 		}
 
-	private:
-		bool parseFilter(ConfigData& a_config) {
+		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
+			std::string indent = std::string(a_indent * 4, ' ');
+
+			switch (a_configData.Element) {
+			case ElementType::kBodyPartData:
+				logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
+					ElementTypeToString(a_configData.Element), std::any_cast<std::string>(a_configData.AssignValue.value()));
+				break;
+
+			case ElementType::kBipedObjectSlots:
+				logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
+					ElementTypeToString(a_configData.Element), GetBipedSlots(std::any_cast<std::uint32_t>(a_configData.AssignValue.value())));
+				break;
+
+			case ElementType::kProperties:
+				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
+				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
+					std::string opLog;
+
+					switch (a_configData.Operations[ii].OpType) {
+					case OperationType::kClear:
+						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[ii].OpType));
+						break;
+
+					case OperationType::kSet:
+						opLog = fmt::format(".{}({}, {})", OperationTypeToString(a_configData.Operations[ii].OpType),
+							a_configData.Operations[ii].OpProperty->ActorValueForm, a_configData.Operations[ii].OpProperty->Value);
+						break;
+
+					case OperationType::kDelete:
+						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType),
+							a_configData.Operations[ii].OpProperty->ActorValueForm);
+						break;
+					}
+
+					if (ii == a_configData.Operations.size() - 1)
+						opLog += ";";
+
+					logger::info("{}    {}", indent, opLog);
+				}
+				break;
+
+			case ElementType::kMaleSkeletalModel:
+			case ElementType::kFemaleSkeletalModel:
+				logger::info("{}{}({}).{} = \"{}\";", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
+					ElementTypeToString(a_configData.Element), std::any_cast<std::string>(a_configData.AssignValue.value()));
+				break;
+			}
+		}
+
+		bool ParseFilter(ConfigData& a_config) {
 			auto token = reader.GetToken();
 			if (token == "FilterByFormID")
 				a_config.Filter = FilterType::kFormID;
@@ -172,7 +222,7 @@ namespace Races {
 				return false;
 			}
 
-			auto filterForm = parseForm();
+			auto filterForm = ParseForm();
 			if (!filterForm.has_value())
 				return false;
 
@@ -187,7 +237,7 @@ namespace Races {
 			return true;
 		}
 
-		bool parseElement(ConfigData& a_config) {
+		bool ParseElement(ConfigData& a_config) {
 			auto token = reader.GetToken();
 			if (token == "MaleSkeletalModel")
 				a_config.Element = ElementType::kMaleSkeletalModel;
@@ -207,7 +257,7 @@ namespace Races {
 			return true;
 		}
 
-		bool parseAssignment(ConfigData& a_config) {
+		bool ParseAssignment(ConfigData& a_config) {
 			auto token = reader.GetToken();
 			if (token != "=") {
 				logger::warn("Line {}, Col {}: Syntax error. Expected '='.", reader.GetLastLine(), reader.GetLastLineIndex());
@@ -229,7 +279,7 @@ namespace Races {
 				a_config.AssignValue = std::any(value);
 			}
 			else if (a_config.Element == ElementType::kBodyPartData) {
-				auto bodyPartDataForm = parseForm();
+				auto bodyPartDataForm = ParseForm();
 				if (!bodyPartDataForm.has_value())
 					return false;
 
@@ -238,7 +288,7 @@ namespace Races {
 			else if (a_config.Element == ElementType::kBipedObjectSlots) {
 				std::uint32_t bipedObjectSlotsValue = 0;
 				
-				auto bipedSlot = parseBipedSlot();
+				auto bipedSlot = ParseBipedSlot();
 				if (!bipedSlot.has_value())
 					return false;
 
@@ -246,7 +296,7 @@ namespace Races {
 					bipedObjectSlotsValue |= 1 << (bipedSlot.value() - 30);
 
 				while (true) {
-					token = reader.LookAhead();
+					token = reader.Peek();
 					if (token == ";")
 						break;
 
@@ -256,7 +306,7 @@ namespace Races {
 						return false;
 					}
 
-					bipedSlot = parseBipedSlot();
+					bipedSlot = ParseBipedSlot();
 					if (!bipedSlot.has_value())
 						return false;
 
@@ -274,7 +324,7 @@ namespace Races {
 			return true;
 		}
 
-		bool parseOperation(ConfigData& a_config) {
+		bool ParseOperation(ConfigData& a_config) {
 			ConfigData::Operation newOp;
 
 			auto token = reader.GetToken();
@@ -307,7 +357,7 @@ namespace Races {
 				newOp.OpProperty = ConfigData::Operation::PropertyData{};
 
 				if (newOp.OpType != OperationType::kClear) {
-					std::optional<std::string> opForm = parseForm();
+					std::optional<std::string> opForm = ParseForm();
 					if (!opForm.has_value())
 						return false;
 
@@ -320,7 +370,7 @@ namespace Races {
 							return false;
 						}
 
-						std::optional<float> opValue = parseNumber();
+						std::optional<float> opValue = ParseNumber();
 						if (!opValue.has_value())
 							return false;
 
@@ -342,7 +392,7 @@ namespace Races {
 			return false;
 		}
 
-		std::optional<float> parseNumber() {
+		std::optional<float> ParseNumber() {
 			auto token = reader.GetToken();
 			if (token.empty() || token == ")") {
 				logger::warn("Line {}, Col {}: Expected number '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
@@ -350,7 +400,7 @@ namespace Races {
 			}
 
 			std::string magStr = std::string(token);
-			if (reader.LookAhead() == ".") {
+			if (reader.Peek() == ".") {
 				magStr += reader.GetToken();
 
 				token = reader.GetToken();
@@ -374,7 +424,7 @@ namespace Races {
 			return fParsedValue;
 		}
 
-		std::optional<std::uint32_t> parseBipedSlot() {
+		std::optional<std::uint32_t> ParseBipedSlot() {
 			unsigned long parsedValue;
 
 			auto token = reader.GetToken();
@@ -397,99 +447,29 @@ namespace Races {
 			return static_cast<std::uint32_t>(parsedValue);
 		}
 
-		std::optional<std::string> parseForm() {
-			std::string form;
+		std::string GetBipedSlots(std::uint32_t a_bipedObjSlots) {
+			std::string retStr;
+			std::string separtor = " | ";
 
-			auto token = reader.GetToken();
-			if (!token.starts_with('\"')) {
-				logger::warn("Line {}, Col {}: PluginName must be a string.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-			else if (!token.ends_with('\"')) {
-				logger::warn("Line {}, Col {}: String must end with '\"'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-			form += token.substr(1, token.length() - 2);
+			if (a_bipedObjSlots == 0)
+				return "0";
 
-			token = reader.GetToken();
-			if (token != "|") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '|'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
+			for (std::size_t ii = 0; ii < 32; ii++) {
+				if (a_bipedObjSlots & (1 << ii))
+					retStr += std::to_string(ii + 30) + separtor;
 			}
-			form += token;
 
-			token = reader.GetToken();
-			if (token.empty() || token == ")") {
-				logger::warn("Line {}, Col {}: Expected FormID '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-				return std::nullopt;
-			}
-			form += token;
+			if (retStr.empty())
+				return retStr;
 
-			return form;
+			return retStr.substr(0, retStr.size() - separtor.size());
 		}
 	};
 
-	std::string GetBipedSlots(std::uint32_t a_bipedObjSlots) {
-		std::string retStr;
-		std::string separtor = " | ";
-
-		if (a_bipedObjSlots == 0)
-			return "0";
-
-		for (std::size_t ii = 0; ii < 32; ii++) {
-			if (a_bipedObjSlots & (1 << ii))
-				retStr += std::to_string(ii + 30) + separtor;
-		}
-
-		if (retStr.empty())
-			return retStr;
-
-		return retStr.substr(0, retStr.size() - separtor.size());
-	}
-
 	void ReadConfig(std::string_view a_path) {
-		Configs::ConfigReader reader(a_path);
-
-		while (!reader.EndOfFile()) {
-			RaceParser parser(reader);
-			auto configData = parser.Parse();
-			if (!configData.has_value()) {
-				parser.RecoverFromError();
-				continue;
-			}
-
-			g_configVec.push_back(configData.value());
-
-			if (configData->Element == ElementType::kBodyPartData)
-				logger::info("{}({}).{} = {};", FilterTypeToString(configData->Filter), configData->FilterForm, 
-					ElementTypeToString(configData->Element), std::any_cast<std::string>(configData->AssignValue.value()));
-			else if (configData->Element == ElementType::kBipedObjectSlots)
-				logger::info("{}({}).{} = {};", FilterTypeToString(configData->Filter), configData->FilterForm,
-					ElementTypeToString(configData->Element), GetBipedSlots(std::any_cast<std::uint32_t>(configData->AssignValue.value())));
-			else if (configData->Element == ElementType::kProperties) {
-				logger::info("{}({}).{}", FilterTypeToString(configData->Filter), configData->FilterForm, ElementTypeToString(configData->Element));
-				for (std::size_t ii = 0; ii < configData->Operations.size(); ii++) {
-					std::string opLog;
-					
-					if (configData->Operations[ii].OpType == OperationType::kClear)
-						opLog = fmt::format(".{}()", OperationTypeToString(configData->Operations[ii].OpType));
-					else if (configData->Operations[ii].OpType == OperationType::kSet)
-						opLog = fmt::format(".{}({}, {})", OperationTypeToString(configData->Operations[ii].OpType),
-							configData->Operations[ii].OpProperty->ActorValueForm, configData->Operations[ii].OpProperty->Value);
-					else if (configData->Operations[ii].OpType == OperationType::kDelete)
-						opLog = fmt::format(".{}({})", OperationTypeToString(configData->Operations[ii].OpType),
-							configData->Operations[ii].OpProperty->ActorValueForm);
-
-					if (ii == configData->Operations.size() - 1)
-						opLog += ";";
-
-					logger::info("    {}", opLog);
-				}
-			}
-			else
-				logger::info("{}({}).{} = \"{}\";", FilterTypeToString(configData->Filter), configData->FilterForm, 
-					ElementTypeToString(configData->Element), std::any_cast<std::string>(configData->AssignValue.value()));
-		}
+		RaceParser parser(a_path);
+		auto parsedStatements = parser.Parse();
+		g_configVec.insert(g_configVec.end(), parsedStatements.begin(), parsedStatements.end());
 	}
 
 	void ReadConfigs() {
@@ -513,89 +493,91 @@ namespace Races {
 		}
 	}
 
-	void Prepare(const std::vector<ConfigData>& a_configVec) {
-		logger::info("======================== Start preparing patch for Race ========================");
+	void Prepare(const ConfigData& a_configData) {
+		if (a_configData.Filter == FilterType::kFormID) {
+			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+			if (!filterForm) {
+				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
+				return;
+			}
 
-		for (const auto& configData : a_configVec) {
-			if (configData.Filter == FilterType::kFormID) {
-				RE::TESForm* filterForm = Utils::GetFormFromString(configData.FilterForm);
-				if (!filterForm) {
-					logger::warn("Invalid FilterForm: '{}'.", configData.FilterForm);
-					continue;
+			RE::TESRace* race = filterForm->As<RE::TESRace>();
+			if (!race) {
+				logger::warn("'{}' is not a Race.", a_configData.FilterForm);
+				return;
+			}
+
+			if (a_configData.Element == ElementType::kMaleSkeletalModel) {
+				if (a_configData.AssignValue.has_value())
+					g_patchMap[race].MaleSkeletalModel = std::any_cast<std::string>(a_configData.AssignValue.value());
+			}
+			else if (a_configData.Element == ElementType::kFemaleSkeletalModel) {
+				if (a_configData.AssignValue.has_value())
+					g_patchMap[race].FemaleSkeletalModel = std::any_cast<std::string>(a_configData.AssignValue.value());
+			}
+			else if (a_configData.Element == ElementType::kBodyPartData) {
+				if (!a_configData.AssignValue.has_value())
+					return;
+
+				std::string bodyPartDataFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+				RE::TESForm* bodyPartDataForm = Utils::GetFormFromString(bodyPartDataFormStr);
+				if (!bodyPartDataForm) {
+					logger::warn("Invalid Form: '{}'.", bodyPartDataFormStr);
+					return;
 				}
 
-				RE::TESRace* race = filterForm->As<RE::TESRace>();
-				if (!race) {
-					logger::warn("'{}' is not a Race.", configData.FilterForm);
-					continue;
+				RE::BGSBodyPartData* bodyPartData = bodyPartDataForm->As<RE::BGSBodyPartData>();
+				if (!bodyPartData) {
+					logger::warn("'{}' is not a BodyPartData.", bodyPartDataFormStr);
+					return;
 				}
 
-				if (configData.Element == ElementType::kMaleSkeletalModel) {
-					if (configData.AssignValue.has_value())
-						g_patchMap[race].MaleSkeletalModel = std::any_cast<std::string>(configData.AssignValue.value());
-				}
-				else if (configData.Element == ElementType::kFemaleSkeletalModel) {
-					if (configData.AssignValue.has_value())
-						g_patchMap[race].FemaleSkeletalModel = std::any_cast<std::string>(configData.AssignValue.value());
-				}
-				else if (configData.Element == ElementType::kBodyPartData) {
-					if (!configData.AssignValue.has_value())
-						continue;
+				g_patchMap[race].BodyPartData = bodyPartData;
+			}
+			else if (a_configData.Element == ElementType::kBipedObjectSlots) {
+				if (a_configData.AssignValue.has_value())
+					g_patchMap[race].BipedObjectSlots = std::any_cast<std::uint32_t>(a_configData.AssignValue.value());
+			}
+			else if (a_configData.Element == ElementType::kProperties) {
+				PatchData& patchData = g_patchMap[race];
 
-					std::string bodyPartDataFormStr = std::any_cast<std::string>(configData.AssignValue.value());
-					RE::TESForm* bodyPartDataForm = Utils::GetFormFromString(bodyPartDataFormStr);
-					if (!bodyPartDataForm) {
-						logger::warn("Invalid Form: '{}'.", bodyPartDataFormStr);
-						continue;
+				if (!patchData.Properties.has_value())
+					patchData.Properties = PatchData::PropertiesData{};
+
+				for (const auto& op : a_configData.Operations) {
+					if (op.OpType == OperationType::kClear) {
+						patchData.Properties->Clear = true;
 					}
-
-					RE::BGSBodyPartData* bodyPartData = bodyPartDataForm->As<RE::BGSBodyPartData>();
-					if (!bodyPartData) {
-						logger::warn("'{}' is not a BodyPartData.", bodyPartDataFormStr);
-						continue;
-					}
-
-					g_patchMap[race].BodyPartData = bodyPartData;
-				}
-				else if (configData.Element == ElementType::kBipedObjectSlots) {
-					if (configData.AssignValue.has_value())
-						g_patchMap[race].BipedObjectSlots = std::any_cast<std::uint32_t>(configData.AssignValue.value());
-				}
-				else if (configData.Element == ElementType::kProperties) {
-					PatchData& patchData = g_patchMap[race];
-
-					if (!patchData.Properties.has_value())
-						patchData.Properties = PatchData::PropertiesData{};
-
-					for (const auto& op : configData.Operations) {
-						if (op.OpType == OperationType::kClear) {
-							patchData.Properties->Clear = true;
+					else if (op.OpType == OperationType::kSet || op.OpType == OperationType::kDelete) {
+						RE::TESForm* opForm = Utils::GetFormFromString(op.OpProperty->ActorValueForm);
+						if (!opForm) {
+							logger::warn("Invalid Form: '{}'.", op.OpProperty->ActorValueForm);
+							continue;
 						}
-						else if (op.OpType == OperationType::kSet || op.OpType == OperationType::kDelete) {
-							RE::TESForm* opForm = Utils::GetFormFromString(op.OpProperty->ActorValueForm);
-							if (!opForm) {
-								logger::warn("Invalid Form: '{}'.", op.OpProperty->ActorValueForm);
-								continue;
-							}
 
-							RE::ActorValueInfo* avInfo = opForm->As<RE::ActorValueInfo>();
-							if (!avInfo) {
-								logger::warn("'{}' is not a ActorValue", op.OpProperty->ActorValueForm);
-								continue;
-							}
-
-							if (op.OpType == OperationType::kSet)
-								patchData.Properties->SetPropertyVec.push_back({ avInfo, op.OpProperty->Value });
-							else
-								patchData.Properties->DeletePropertyVec.push_back({ avInfo, 0 });
+						RE::ActorValueInfo* avInfo = opForm->As<RE::ActorValueInfo>();
+						if (!avInfo) {
+							logger::warn("'{}' is not a ActorValue", op.OpProperty->ActorValueForm);
+							continue;
 						}
+
+						if (op.OpType == OperationType::kSet)
+							patchData.Properties->SetPropertyVec.push_back({ avInfo, op.OpProperty->Value });
+						else
+							patchData.Properties->DeletePropertyVec.push_back({ avInfo, 0 });
 					}
 				}
 			}
 		}
+	}
 
-		logger::info("======================== Finished preparing patch for Race ========================");
-		logger::info("");
+	void Prepare(const std::vector<Parsers::Statement<ConfigData>>& a_configVec) {
+		for (const auto& configData : a_configVec) {
+			if (configData.Type == Parsers::StatementType::kExpression)
+				Prepare(configData.ExpressionStatement.value());
+			else if (configData.Type == Parsers::StatementType::kConditional)
+				Prepare(configData.ConditionalStatement->Evaluates());
+		}
 	}
 
 	void PatchProperties(RE::TESRace* a_race, const PatchData::PropertiesData& a_propertiesData) {
@@ -646,7 +628,12 @@ namespace Races {
 	}
 
 	void Patch() {
+		logger::info("======================== Start preparing patch for Race ========================");
+
 		Prepare(g_configVec);
+
+		logger::info("======================== Finished preparing patch for Race ========================");
+		logger::info("");
 
 		logger::info("======================== Start patching for Race ========================");
 

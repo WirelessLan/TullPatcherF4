@@ -29,6 +29,18 @@ namespace Utils {
 		return retID;
 	}
 
+	bool IsPluginExists(std::string_view a_pluginName) {
+		RE::TESDataHandler* g_dataHandler = RE::TESDataHandler::GetSingleton();
+		if (!g_dataHandler)
+			return false;
+
+		auto mod = g_dataHandler->LookupModByName(a_pluginName);
+		if (!mod)
+			return false;
+
+		return mod->IsActive();
+	}
+
 	RE::TESForm* GetFormFromIdentifier(std::string_view a_pluginName, std::uint32_t a_formID) {
 		RE::TESDataHandler* g_dataHandler = RE::TESDataHandler::GetSingleton();
 		if (!g_dataHandler)

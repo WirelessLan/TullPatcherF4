@@ -2,7 +2,7 @@
 
 #include <regex>
 
-#include "Configs.h"
+#include "Parsers.h"
 #include "Utils.h"
 
 namespace FormLists {
@@ -65,20 +65,21 @@ namespace FormLists {
 		std::optional<ListData> List;
 	};
 
-	std::vector<ConfigData> g_configVec;
+	std::vector<Parsers::Statement<ConfigData>> g_configVec;
 	std::unordered_map<RE::BGSListForm*, PatchData> g_patchMap;
 
-	class FormListParser : public Configs::Parser<ConfigData> {
+	class FormListParser : public Parsers::Parser<ConfigData> {
 	public:
-		FormListParser(Configs::ConfigReader& a_configReader) : Configs::Parser<ConfigData>(a_configReader) {}
+		FormListParser(std::string_view a_configPath) : Parsers::Parser<ConfigData>(a_configPath) {}
 
-		std::optional<ConfigData> Parse() override {
-			if (reader.EndOfFile() || reader.LookAhead().empty())
+	protected:
+		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
+			if (reader.EndOfFile() || reader.Peek().empty())
 				return std::nullopt;
 
 			ConfigData configData{};
 
-			if (!parseFilter(configData))
+			if (!ParseFilter(configData))
 				return std::nullopt;
 
 			auto token = reader.GetToken();
@@ -87,7 +88,7 @@ namespace FormLists {
 				return std::nullopt;
 			}
 
-			if (!parseElement(configData))
+			if (!ParseElement(configData))
 				return std::nullopt;
 
 			token = reader.GetToken();
@@ -96,31 +97,49 @@ namespace FormLists {
 				return std::nullopt;
 			}
 
-			if (!parseOperation(configData))
+			if (!ParseOperation(configData))
 				return std::nullopt;
 
 			while (true) {
-				token = reader.LookAhead();
+				token = reader.Peek();
 				if (token == ";") {
 					reader.GetToken();
 					break;
 				}
-				
+
 				token = reader.GetToken();
 				if (token != ".") {
 					logger::warn("Line {}, Col {}: Syntax error. Expected '.' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
 					return std::nullopt;
 				}
 
-				if (!parseOperation(configData))
+				if (!ParseOperation(configData))
 					return std::nullopt;
 			}
 
-			return configData;
+			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
 		}
 
-	private:
-		bool parseFilter(ConfigData& a_configData) {
+		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
+			std::string indent = std::string(a_indent * 4, ' ');
+
+			switch (a_configData.Element) {
+			case ElementType::kList:
+				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
+				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
+					std::string opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType),
+						a_configData.Operations[ii].OpForm.has_value() ? a_configData.Operations[ii].OpForm.value() : "");
+
+					if (ii == a_configData.Operations.size() - 1)
+						opLog += ";";
+
+					logger::info("{}    {}", indent, opLog);
+				}
+				break;
+			}
+		}
+
+		bool ParseFilter(ConfigData& a_configData) {
 			auto token = reader.GetToken();
 			if (token == "FilterByFormID")
 				a_configData.Filter = FilterType::kFormID;
@@ -135,7 +154,7 @@ namespace FormLists {
 				return false;
 			}
 
-			auto filterForm = parseForm();
+			auto filterForm = ParseForm();
 			if (!filterForm.has_value())
 				return false;
 
@@ -150,7 +169,7 @@ namespace FormLists {
 			return true;
 		}
 
-		bool parseElement(ConfigData& a_configData) {
+		bool ParseElement(ConfigData& a_configData) {
 			auto token = reader.GetToken();
 			if (token == "List")
 				a_configData.Element = ElementType::kList;
@@ -162,7 +181,7 @@ namespace FormLists {
 			return true;
 		}
 
-		bool parseOperation(ConfigData& a_configData) {
+		bool ParseOperation(ConfigData& a_configData) {
 			OperationType opType;
 
 			auto token = reader.GetToken();
@@ -185,7 +204,7 @@ namespace FormLists {
 
 			std::optional<std::string> opData;
 			if (opType != OperationType::kClear) {
-				opData = parseForm();
+				opData = ParseForm();
 				if (!opData.has_value())
 					return false;
 			}
@@ -200,63 +219,12 @@ namespace FormLists {
 
 			return true;
 		}
-
-		std::optional<std::string> parseForm() {
-			std::string form;
-
-			auto token = reader.GetToken();
-			if (!token.starts_with('\"')) {
-				logger::warn("Line {}, Col {}: PluginName must be a string.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-			else if (!token.ends_with('\"')) {
-				logger::warn("Line {}, Col {}: String must end with '\"'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-			form += token.substr(1, token.length() - 2);
-
-			token = reader.GetToken();
-			if (token != "|") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '|'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-			form += token;
-
-			token = reader.GetToken();
-			if (token.empty() || token == ")") {
-				logger::warn("Line {}, Col {}: Expected FormID '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-				return std::nullopt;
-			}
-			form += token;
-
-			return form;
-		}
 	};
 
 	void ReadConfig(std::string_view a_path) {
-		Configs::ConfigReader reader(a_path);
-
-		while (!reader.EndOfFile()) {
-			FormListParser parser(reader);
-			auto configData = parser.Parse();
-			if (!configData.has_value()) {
-				parser.RecoverFromError();
-				continue;
-			}
-
-			g_configVec.push_back(configData.value());
-
-			logger::info("{}({}).{}", FilterTypeToString(configData->Filter), configData->FilterForm, ElementTypeToString(configData->Element));
-			for (std::size_t ii = 0; ii < configData->Operations.size(); ii++) {
-				std::string opLog = fmt::format(".{}({})", OperationTypeToString(configData->Operations[ii].OpType),
-						configData->Operations[ii].OpForm.has_value() ? configData->Operations[ii].OpForm.value() : "");
-
-				if (ii == configData->Operations.size() - 1)
-					opLog += ";";
-
-				logger::info("    {}", opLog);
-			}
-		}
+		FormListParser parser(a_path);
+		auto parsedStatements = parser.Parse();
+		g_configVec.insert(g_configVec.end(), parsedStatements.begin(), parsedStatements.end());
 	}
 
 	void ReadConfigs() {
@@ -280,52 +248,54 @@ namespace FormLists {
 		}
 	}
 
-	void Prepare(const std::vector<ConfigData>& a_configVec) {
-		logger::info("======================== Start preparing patch for FormList ========================");
+	void Prepare(const ConfigData& a_configData) {
+		if (a_configData.Filter == FilterType::kFormID) {
+			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+			if (!filterForm) {
+				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
+				return;
+			}
 
-		for (const auto& configData : a_configVec) {
-			if (configData.Filter == FilterType::kFormID) {
-				RE::TESForm* filterForm = Utils::GetFormFromString(configData.FilterForm);
-				if (!filterForm) {
-					logger::warn("Invalid FilterForm: '{}'.", configData.FilterForm);
-					continue;
-				}
+			RE::BGSListForm* formList = filterForm->As<RE::BGSListForm>();
+			if (!formList) {
+				logger::warn("'{}' is not a FormList.", a_configData.FilterForm);
+				return;
+			}
 
-				RE::BGSListForm* formList = filterForm->As<RE::BGSListForm>();
-				if (!formList) {
-					logger::warn("'{}' is not a FormList.", configData.FilterForm);
-					continue;
-				}
+			PatchData& patchData = g_patchMap[formList];
 
-				PatchData& patchData = g_patchMap[formList];
+			if (a_configData.Element == ElementType::kList) {
+				if (!patchData.List.has_value())
+					patchData.List = PatchData::ListData{};
 
-				if (configData.Element == ElementType::kList) {
-					if (!patchData.List.has_value())
-						patchData.List = PatchData::ListData{};
-
-					for (const auto& op : configData.Operations) {
-						if (op.OpType == OperationType::kClear) {
-							patchData.List->Clear = true;
+				for (const auto& op : a_configData.Operations) {
+					if (op.OpType == OperationType::kClear) {
+						patchData.List->Clear = true;
+					}
+					else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kDelete) {
+						RE::TESForm* opForm = Utils::GetFormFromString(op.OpForm.value());
+						if (!opForm) {
+							logger::warn("Invalid Form: '{}'.", op.OpForm.value());
+							continue;
 						}
-						else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kDelete) {
-							RE::TESForm* opForm = Utils::GetFormFromString(op.OpForm.value());
-							if (!opForm) {
-								logger::warn("Invalid Form: '{}'.", op.OpForm.value());
-								continue;
-							}
 
-							if (op.OpType == OperationType::kAdd)
-								patchData.List->AddFormVec.push_back(opForm);
-							else
-								patchData.List->DeleteFormVec.push_back(opForm);
-						}
+						if (op.OpType == OperationType::kAdd)
+							patchData.List->AddFormVec.push_back(opForm);
+						else
+							patchData.List->DeleteFormVec.push_back(opForm);
 					}
 				}
 			}
 		}
+	}
 
-		logger::info("======================== Finished preparing patch for FormList ========================");
-		logger::info("");
+	void Prepare(const std::vector<Parsers::Statement<ConfigData>>& a_configVec) {
+		for (const auto& configData : a_configVec) {
+			if (configData.Type == Parsers::StatementType::kExpression)
+				Prepare(configData.ExpressionStatement.value());
+			else if (configData.Type == Parsers::StatementType::kConditional)
+				Prepare(configData.ConditionalStatement->Evaluates());
+		}
 	}
 
 	void PatchList(RE::BGSListForm* a_formList, const PatchData::ListData& a_listData) {
@@ -364,7 +334,12 @@ namespace FormLists {
 	}
 
 	void Patch() {
+		logger::info("======================== Start preparing patch for FormList ========================");
+
 		Prepare(g_configVec);
+
+		logger::info("======================== Finished preparing patch for FormList ========================");
+		logger::info("");
 
 		logger::info("======================== Start patching for FormList ========================");
 

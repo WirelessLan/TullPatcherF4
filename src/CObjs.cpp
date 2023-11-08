@@ -3,7 +3,7 @@
 #include <unordered_set>
 #include <regex>
 
-#include "Configs.h"
+#include "Parsers.h"
 #include "Utils.h"
 
 namespace CObjs {
@@ -73,22 +73,23 @@ namespace CObjs {
 		std::optional<Data> FilterByCategoryKeyword;
 	};
 
-	std::vector<ConfigData> g_configVec;
+	std::vector<Parsers::Statement<ConfigData>> g_configVec;
 	std::unordered_map<RE::BGSConstructibleObject*, PatchData> g_patchMap;
 	std::unordered_map<RE::BGSKeyword*, std::uint16_t> g_keywordIndexMap;
 	std::unordered_map<std::uint16_t, std::vector<ConfigData::Operation>> g_cobjFilterMap;
 
-	class CObjParser : public Configs::Parser<ConfigData> {
+	class CObjParser : public Parsers::Parser<ConfigData> {
 	public:
-		CObjParser(Configs::ConfigReader& a_configReader) : Configs::Parser<ConfigData>(a_configReader) {}
+		CObjParser(std::string_view a_configPath) : Parsers::Parser<ConfigData>(a_configPath) {}
 
-		std::optional<ConfigData> Parse() override {
-			if (reader.EndOfFile() || reader.LookAhead().empty())
+	protected:
+		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
+			if (reader.EndOfFile() || reader.Peek().empty())
 				return std::nullopt;
 
 			ConfigData configData{};
 
-			if (!parseFilter(configData))
+			if (!ParseFilter(configData))
 				return std::nullopt;
 
 			auto token = reader.GetToken();
@@ -97,7 +98,7 @@ namespace CObjs {
 				return std::nullopt;
 			}
 
-			if (!parseElement(configData))
+			if (!ParseElement(configData))
 				return std::nullopt;
 
 			token = reader.GetToken();
@@ -106,11 +107,11 @@ namespace CObjs {
 				return std::nullopt;
 			}
 
-			if (!parseOperation(configData))
+			if (!ParseOperation(configData))
 				return std::nullopt;
 
 			while (true) {
-				token = reader.LookAhead();
+				token = reader.Peek();
 				if (token == ";") {
 					reader.GetToken();
 					break;
@@ -122,15 +123,33 @@ namespace CObjs {
 					return std::nullopt;
 				}
 
-				if (!parseOperation(configData))
+				if (!ParseOperation(configData))
 					return std::nullopt;
 			}
 
-			return configData;
+			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
 		}
 
-	private:
-		bool parseFilter(ConfigData& a_configData) {
+		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
+			std::string indent = std::string(a_indent * 4, ' ');
+
+			switch (a_configData.Element) {
+			case ElementType::kCategories:
+				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
+				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
+					std::string opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType),
+						a_configData.Operations[ii].OpForm.has_value() ? a_configData.Operations[ii].OpForm.value() : "");
+
+					if (ii == a_configData.Operations.size() - 1)
+						opLog += ";";
+
+					logger::info("{}    {}", indent, opLog);
+				}
+				break;
+			}
+		}
+
+		bool ParseFilter(ConfigData& a_configData) {
 			auto token = reader.GetToken();
 			if (token == "FilterByFormID")
 				a_configData.Filter = FilterType::kFormID;
@@ -147,7 +166,7 @@ namespace CObjs {
 				return false;
 			}
 
-			auto filterForm = parseForm();
+			auto filterForm = ParseForm();
 			if (!filterForm.has_value())
 				return false;
 
@@ -162,7 +181,7 @@ namespace CObjs {
 			return true;
 		}
 
-		bool parseElement(ConfigData& a_configData) {
+		bool ParseElement(ConfigData& a_configData) {
 			auto token = reader.GetToken();
 			if (token == "Categories")
 				a_configData.Element = ElementType::kCategories;
@@ -174,7 +193,7 @@ namespace CObjs {
 			return true;
 		}
 
-		bool parseOperation(ConfigData& a_configData) {
+		bool ParseOperation(ConfigData& a_configData) {
 			OperationType opType;
 
 			auto token = reader.GetToken();
@@ -205,7 +224,7 @@ namespace CObjs {
 
 			std::optional<std::string> opData;
 			if (opType != OperationType::kClear) {
-				opData = parseForm();
+				opData = ParseForm();
 				if (!opData.has_value())
 					return false;
 			}
@@ -220,63 +239,12 @@ namespace CObjs {
 
 			return true;
 		}
-
-		std::optional<std::string> parseForm() {
-			std::string form;
-
-			auto token = reader.GetToken();
-			if (!token.starts_with('\"')) {
-				logger::warn("Line {}, Col {}: PluginName must be a string.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-			else if (!token.ends_with('\"')) {
-				logger::warn("Line {}, Col {}: String must end with '\"'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-			form += token.substr(1, token.length() - 2);
-
-			token = reader.GetToken();
-			if (token != "|") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '|'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-			form += token;
-
-			token = reader.GetToken();
-			if (token.empty() || token == ")") {
-				logger::warn("Line {}, Col {}: Expected FormID '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-				return std::nullopt;
-			}
-			form += token;
-
-			return form;
-		}
 	};
 
 	void ReadConfig(std::string_view a_path) {
-		Configs::ConfigReader reader(a_path);
-
-		while (!reader.EndOfFile()) {
-			CObjParser parser(reader);
-			auto configData = parser.Parse();
-			if (!configData.has_value()) {
-				parser.RecoverFromError();
-				continue;
-			}
-
-			g_configVec.push_back(configData.value());
-
-			logger::info("{}({}).{}", FilterTypeToString(configData->Filter), configData->FilterForm, ElementTypeToString(configData->Element));
-			for (std::size_t ii = 0; ii < configData->Operations.size(); ii++) {
-				std::string opLog = fmt::format(".{}({})", OperationTypeToString(configData->Operations[ii].OpType),
-						configData->Operations[ii].OpForm.has_value() ? configData->Operations[ii].OpForm.value() : "");
-
-				if (ii == configData->Operations.size() - 1)
-					opLog += ";";
-
-				logger::info("    {}", opLog);
-			}
-		}
+		CObjParser parser(a_path);
+		auto parsedStatements = parser.Parse();
+		g_configVec.insert(g_configVec.end(), parsedStatements.begin(), parsedStatements.end());
 	}
 
 	void ReadConfigs() {
@@ -388,76 +356,79 @@ namespace CObjs {
 		}
 	}
 
-	void Prepare(const std::vector<ConfigData>& a_configVec) {
-		logger::info("======================== Start preparing patch for ConstructibleObject ========================");
-
-		SetKeywordIndexMap();
-
-		for (const auto& configData : a_configVec) {
-			if (configData.Filter == FilterType::kFormID)
-				PrepareFilterByFormID(configData);
-			else if (configData.Filter == FilterType::kCategoryKeyword)
-				PrepareFilterByCategoryKeyword(configData);
-		}
-
+	void PrepareByCObjFilterMap() {
 		RE::TESDataHandler* dataHandler = RE::TESDataHandler::GetSingleton();
-		if (dataHandler && !g_cobjFilterMap.empty()) {
-			for (RE::TESForm* form : dataHandler->formArrays[RE::stl::to_underlying(RE::ENUM_FORM_ID::kCOBJ)]) {
-				RE::BGSConstructibleObject* cobjForm = form->As<RE::BGSConstructibleObject>();
-				if (!cobjForm || cobjForm->filterKeywords.size == 0 || !cobjForm->filterKeywords.array)
+		if (!dataHandler || g_cobjFilterMap.empty())
+			return;
+
+		for (RE::TESForm* form : dataHandler->formArrays[RE::stl::to_underlying(RE::ENUM_FORM_ID::kCOBJ)]) {
+			RE::BGSConstructibleObject* cobjForm = form->As<RE::BGSConstructibleObject>();
+			if (!cobjForm || cobjForm->filterKeywords.size == 0 || !cobjForm->filterKeywords.array)
+				continue;
+
+			for (std::uint32_t ii = 0; ii < cobjForm->filterKeywords.size; ii++) {
+				if (cobjForm->filterKeywords.array[ii].keywordIndex == 0xFFFF)
 					continue;
 
-				for (std::uint32_t ii = 0; ii < cobjForm->filterKeywords.size; ii++) {
-					if (cobjForm->filterKeywords.array[ii].keywordIndex == 0xFFFF)
-						continue;
+				auto cobjFilterMap_iter = g_cobjFilterMap.find(cobjForm->filterKeywords.array[ii].keywordIndex);
+				if (cobjFilterMap_iter == g_cobjFilterMap.end())
+					continue;
 
-					auto cobjFilterMap_iter = g_cobjFilterMap.find(cobjForm->filterKeywords.array[ii].keywordIndex);
-					if (cobjFilterMap_iter == g_cobjFilterMap.end())
-						continue;
+				PatchData& patchData = g_patchMap[cobjForm];
 
-					PatchData& patchData = g_patchMap[cobjForm];
+				if (!patchData.FilterByCategoryKeyword.has_value())
+					patchData.FilterByCategoryKeyword = PatchData::Data{};
 
-					if (!patchData.FilterByCategoryKeyword.has_value())
-						patchData.FilterByCategoryKeyword = PatchData::Data{};
+				if (!patchData.FilterByCategoryKeyword->Categories.has_value())
+					patchData.FilterByCategoryKeyword->Categories = PatchData::Data::CategoriesData{};
 
-					if (!patchData.FilterByCategoryKeyword->Categories.has_value())
-						patchData.FilterByCategoryKeyword->Categories = PatchData::Data::CategoriesData{};
-
-					for (const auto& op : cobjFilterMap_iter->second) {
-						if (op.OpType == OperationType::kClear) {
-							patchData.FilterByCategoryKeyword->Categories->Clear = true;
+				for (const auto& op : cobjFilterMap_iter->second) {
+					if (op.OpType == OperationType::kClear) {
+						patchData.FilterByCategoryKeyword->Categories->Clear = true;
+					}
+					else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kDelete) {
+						RE::TESForm* keywordForm = Utils::GetFormFromString(op.OpForm.value());
+						if (!keywordForm) {
+							logger::warn("Invalid KeywordForm: '{}'.", op.OpForm.value());
+							continue;
 						}
-						else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kDelete) {
-							RE::TESForm* keywordForm = Utils::GetFormFromString(op.OpForm.value());
-							if (!keywordForm) {
-								logger::warn("Invalid KeywordForm: '{}'.", op.OpForm.value());
-								continue;
-							}
 
-							RE::BGSKeyword* keyword = keywordForm->As<RE::BGSKeyword>();
-							if (!keyword) {
-								logger::warn("'{}' is not a Keyword.", op.OpForm.value());
-								continue;
-							}
-
-							auto keywordIndexMap_iter = g_keywordIndexMap.find(keyword);
-							if (keywordIndexMap_iter == g_keywordIndexMap.end()) {
-								logger::warn("'{}' is not a recipe filter keyword.", op.OpForm.value());
-								continue;
-							}
-
-							if (op.OpType == OperationType::kAdd)
-								patchData.FilterByCategoryKeyword->Categories->AddKeywordSet.insert(keyword);
-							else
-								patchData.FilterByCategoryKeyword->Categories->DeleteKeywordSet.insert(keyword);
+						RE::BGSKeyword* keyword = keywordForm->As<RE::BGSKeyword>();
+						if (!keyword) {
+							logger::warn("'{}' is not a Keyword.", op.OpForm.value());
+							continue;
 						}
+
+						auto keywordIndexMap_iter = g_keywordIndexMap.find(keyword);
+						if (keywordIndexMap_iter == g_keywordIndexMap.end()) {
+							logger::warn("'{}' is not a recipe filter keyword.", op.OpForm.value());
+							continue;
+						}
+
+						if (op.OpType == OperationType::kAdd)
+							patchData.FilterByCategoryKeyword->Categories->AddKeywordSet.insert(keyword);
+						else
+							patchData.FilterByCategoryKeyword->Categories->DeleteKeywordSet.insert(keyword);
 					}
 				}
 			}
 		}
+	}
 
-		logger::info("======================== Finished preparing patch for ConstructibleObject ========================");
-		logger::info("");
+	void Prepare(const ConfigData& a_configData) {
+		if (a_configData.Filter == FilterType::kFormID)
+			PrepareFilterByFormID(a_configData);
+		else if (a_configData.Filter == FilterType::kCategoryKeyword)
+			PrepareFilterByCategoryKeyword(a_configData);
+	}
+
+	void Prepare(const std::vector<Parsers::Statement<ConfigData>>& a_configVec) {
+		for (const auto& configData : a_configVec) {
+			if (configData.Type == Parsers::StatementType::kExpression)
+				Prepare(configData.ExpressionStatement.value());
+			else if (configData.Type == Parsers::StatementType::kConditional)
+				Prepare(configData.ConditionalStatement->Evaluates());
+		}
 	}
 
 	std::unordered_set<std::uint16_t> GetCategoryKeywords(RE::BGSConstructibleObject* a_cobjForm) {
@@ -574,7 +545,14 @@ namespace CObjs {
 	}
 
 	void Patch() {
+		logger::info("======================== Start preparing patch for ConstructibleObject ========================");
+
+		SetKeywordIndexMap();
 		Prepare(g_configVec);
+		PrepareByCObjFilterMap();
+
+		logger::info("======================== Finished preparing patch for ConstructibleObject ========================");
+		logger::info("");
 
 		logger::info("======================== Start patching for ConstructibleObject ========================");
 

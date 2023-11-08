@@ -23,6 +23,8 @@ set(SOURCES
 	src/Races.cpp
 	src/Configs.h
 	src/Configs.cpp
+	src/Parsers.h
+	src/Parsers.cpp
 	src/Utils.h
 	src/Utils.cpp
 	src/PCH.h

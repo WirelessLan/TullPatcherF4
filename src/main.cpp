@@ -26,9 +26,9 @@ void Patch() {
 	Races::Patch();
 
 	auto patchEnd = std::chrono::high_resolution_clock::now();
-	std::chrono::duration<double> duration = patchEnd - patchStart;
+	std::chrono::duration<double> patchDuration = patchEnd - patchStart;
 
-	logger::info("Patch execution time: {} seconds", duration.count());
+	logger::info("Patch execution time: {} seconds", patchDuration.count());
 }
 
 void OnF4SEMessage(F4SE::MessagingInterface::Message* msg) {
@@ -87,6 +87,8 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Query(const F4SE::QueryInterface * 
 extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface * a_f4se) {
 	F4SE::Init(a_f4se);
 
+	auto readConfigStart = std::chrono::high_resolution_clock::now();
+
 	ArmorAddons::ReadConfigs();
 	Armors::ReadConfigs();
 	CObjs::ReadConfigs();
@@ -98,6 +100,11 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface * a_
 	Outfits::ReadConfigs();
 	Quests::ReadConfigs();
 	Races::ReadConfigs();
+
+	auto readConfigEnd = std::chrono::high_resolution_clock::now();
+	std::chrono::duration<double> readConfigDuration = readConfigEnd - readConfigStart;
+
+	logger::info("ReadConfig execution time: {} seconds", readConfigDuration.count());
 
 	const F4SE::MessagingInterface* message = F4SE::GetMessagingInterface();
 	if (message)

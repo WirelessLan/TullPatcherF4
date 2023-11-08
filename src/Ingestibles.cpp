@@ -2,7 +2,7 @@
 
 #include <regex>
 
-#include "Configs.h"
+#include "Parsers.h"
 #include "Utils.h"
 
 namespace Ingestibles {
@@ -79,20 +79,21 @@ namespace Ingestibles {
 		std::optional<EffectsData> Effects;
 	};
 
-	std::vector<ConfigData> g_configVec;
+	std::vector<Parsers::Statement<ConfigData>> g_configVec;
 	std::unordered_map<RE::AlchemyItem*, PatchData> g_patchMap;
 
-	class IngestibleParser : public Configs::Parser<ConfigData> {
+	class IngestibleParser : public Parsers::Parser<ConfigData> {
 	public:
-		IngestibleParser(Configs::ConfigReader& a_configReader) : Configs::Parser<ConfigData>(a_configReader) {}
+		IngestibleParser(std::string_view a_configPath) : Parsers::Parser<ConfigData>(a_configPath) {}
 
-		std::optional<ConfigData> Parse() override {
-			if (reader.EndOfFile() || reader.LookAhead().empty())
+	protected:
+		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
+			if (reader.EndOfFile() || reader.Peek().empty())
 				return std::nullopt;
 
 			ConfigData configData{};
 
-			if (!parseFilter(configData))
+			if (!ParseFilter(configData))
 				return std::nullopt;
 
 			auto token = reader.GetToken();
@@ -101,7 +102,7 @@ namespace Ingestibles {
 				return std::nullopt;
 			}
 
-			if (!parseElement(configData))
+			if (!ParseElement(configData))
 				return std::nullopt;
 
 			token = reader.GetToken();
@@ -110,11 +111,11 @@ namespace Ingestibles {
 				return std::nullopt;
 			}
 
-			if (!parseOperation(configData))
+			if (!ParseOperation(configData))
 				return std::nullopt;
 
 			while (true) {
-				token = reader.LookAhead();
+				token = reader.Peek();
 				if (token == ";") {
 					reader.GetToken();
 					break;
@@ -126,15 +127,47 @@ namespace Ingestibles {
 					return std::nullopt;
 				}
 
-				if (!parseOperation(configData))
+				if (!ParseOperation(configData))
 					return std::nullopt;
 			}
 
-			return configData;
+			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
 		}
 
-	private:
-		bool parseFilter(ConfigData& a_configData) {
+		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
+			std::string indent = std::string(a_indent * 4, ' ');
+
+			switch (a_configData.Element) {
+			case ElementType::kEffects:
+				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
+				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
+					std::string opLog;
+
+					switch (a_configData.Operations[ii].OpType) {
+					case OperationType::kClear:
+						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[ii].OpType));
+						break;
+
+					case OperationType::kAdd:
+					case OperationType::kDelete:
+						opLog = fmt::format(".{}({}, {}, {}, {})", OperationTypeToString(a_configData.Operations[ii].OpType),
+							a_configData.Operations[ii].OpEffectData->EffectForm,
+							a_configData.Operations[ii].OpEffectData->Magnitude,
+							a_configData.Operations[ii].OpEffectData->Area,
+							a_configData.Operations[ii].OpEffectData->Duration);
+						break;
+					}
+
+					if (ii == a_configData.Operations.size() - 1)
+						opLog += ";";
+
+					logger::info("{}    {}", indent, opLog);
+				}
+				break;
+			}
+		}
+
+		bool ParseFilter(ConfigData& a_configData) {
 			auto token = reader.GetToken();
 			if (token == "FilterByFormID")
 				a_configData.Filter = FilterType::kFormID;
@@ -149,7 +182,7 @@ namespace Ingestibles {
 				return false;
 			}
 
-			auto filterForm = parseForm();
+			auto filterForm = ParseForm();
 			if (!filterForm.has_value())
 				return false;
 
@@ -164,7 +197,7 @@ namespace Ingestibles {
 			return true;
 		}
 
-		bool parseElement(ConfigData& a_configData) {
+		bool ParseElement(ConfigData& a_configData) {
 			auto token = reader.GetToken();
 			if (token == "Effects")
 				a_configData.Element = ElementType::kEffects;
@@ -176,7 +209,7 @@ namespace Ingestibles {
 			return true;
 		}
 
-		bool parseOperation(ConfigData& a_configData) {
+		bool ParseOperation(ConfigData& a_configData) {
 			OperationType opType;
 
 			auto token = reader.GetToken();
@@ -212,7 +245,7 @@ namespace Ingestibles {
 				if (opType != OperationType::kClear) {
 					newOp.OpEffectData = ConfigData::Operation::EffectData{};
 
-					std::optional<std::string> opForm = parseForm();
+					std::optional<std::string> opForm = ParseForm();
 					if (!opForm.has_value())
 						return false;
 
@@ -231,7 +264,7 @@ namespace Ingestibles {
 					}
 
 					std::string magStr = std::string(token);
-					if (reader.LookAhead() == ".") {
+					if (reader.Peek() == ".") {
 						magStr += reader.GetToken();
 
 						token = reader.GetToken();
@@ -307,72 +340,12 @@ namespace Ingestibles {
 
 			return true;
 		}
-
-		std::optional<std::string> parseForm() {
-			std::string form;
-
-			auto token = reader.GetToken();
-			if (!token.starts_with('\"')) {
-				logger::warn("Line {}, Col {}: PluginName must be a string.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-			else if (!token.ends_with('\"')) {
-				logger::warn("Line {}, Col {}: String must end with '\"'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-			form += token.substr(1, token.length() - 2);
-
-			token = reader.GetToken();
-			if (token != "|") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '|'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-			form += token;
-
-			token = reader.GetToken();
-			if (token.empty() || token == ")") {
-				logger::warn("Line {}, Col {}: Expected FormID '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-				return std::nullopt;
-			}
-			form += token;
-
-			return form;
-		}
 	};
 
 	void ReadConfig(std::string_view a_path) {
-		Configs::ConfigReader reader(a_path);
-		while (!reader.EndOfFile()) {
-			IngestibleParser parser(reader);
-			auto configData = parser.Parse();
-			if (!configData.has_value()) {
-				parser.RecoverFromError();
-				continue;
-			}
-
-			g_configVec.push_back(configData.value());
-
-			if (configData->Element == ElementType::kEffects) {
-				logger::info("{}({}).{}", FilterTypeToString(configData->Filter), configData->FilterForm, ElementTypeToString(configData->Element));
-				for (std::size_t ii = 0; ii < configData->Operations.size(); ii++) {
-					std::string opLog;
-
-					if (configData->Operations[ii].OpType == OperationType::kClear)
-						opLog = fmt::format(".{}()", OperationTypeToString(configData->Operations[ii].OpType));
-					else
-						opLog = fmt::format(".{}({}, {}, {}, {})", OperationTypeToString(configData->Operations[ii].OpType),
-							configData->Operations[ii].OpEffectData->EffectForm,
-							configData->Operations[ii].OpEffectData->Magnitude,
-							configData->Operations[ii].OpEffectData->Area,
-							configData->Operations[ii].OpEffectData->Duration);
-
-					if (ii == configData->Operations.size() - 1)
-						opLog += ";";
-
-					logger::info("    {}", opLog);
-				}
-			}
-		}
+		IngestibleParser parser(a_path);
+		auto parsedStatements = parser.Parse();
+		g_configVec.insert(g_configVec.end(), parsedStatements.begin(), parsedStatements.end());
 	}
 
 	void ReadConfigs() {
@@ -396,58 +369,60 @@ namespace Ingestibles {
 		}
 	}
 
-	void Prepare(const std::vector<ConfigData> a_configVec) {
-		logger::info("======================== Start preparing patch for Ingestible ========================");
+	void Prepare(const ConfigData& a_configData) {
+		if (a_configData.Filter == FilterType::kFormID) {
+			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+			if (!filterForm) {
+				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
+				return;
+			}
 
-		for (const auto& configData : a_configVec) {
-			if (configData.Filter == FilterType::kFormID) {
-				RE::TESForm* filterForm = Utils::GetFormFromString(configData.FilterForm);
-				if (!filterForm) {
-					logger::warn("Invalid FilterForm: '{}'.", configData.FilterForm);
-					continue;
-				}
+			RE::AlchemyItem* ingestibleForm = filterForm->As<RE::AlchemyItem>();
+			if (!ingestibleForm) {
+				logger::warn("'{}' is not a Ingestible.", a_configData.FilterForm);
+				return;
+			}
 
-				RE::AlchemyItem* ingestibleForm = filterForm->As<RE::AlchemyItem>();
-				if (!ingestibleForm) {
-					logger::warn("'{}' is not a Ingestible.", configData.FilterForm);
-					continue;
-				}
+			PatchData& patchData = g_patchMap[ingestibleForm];
 
-				PatchData& patchData = g_patchMap[ingestibleForm];
+			if (a_configData.Element == ElementType::kEffects) {
+				if (!patchData.Effects.has_value())
+					patchData.Effects = PatchData::EffectsData{};
 
-				if (configData.Element == ElementType::kEffects) {
-					if (!patchData.Effects.has_value())
-						patchData.Effects = PatchData::EffectsData{};
-
-					for (const auto& op : configData.Operations) {
-						if (op.OpType == OperationType::kClear) {
-							patchData.Effects->Clear = true;
+				for (const auto& op : a_configData.Operations) {
+					if (op.OpType == OperationType::kClear) {
+						patchData.Effects->Clear = true;
+					}
+					else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kDelete) {
+						RE::TESForm* opForm = Utils::GetFormFromString(op.OpEffectData->EffectForm);
+						if (!opForm) {
+							logger::warn("Invalid Form: '{}'.", op.OpEffectData->EffectForm);
+							continue;
 						}
-						else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kDelete) {
-							RE::TESForm* opForm = Utils::GetFormFromString(op.OpEffectData->EffectForm);
-							if (!opForm) {
-								logger::warn("Invalid Form: '{}'.", op.OpEffectData->EffectForm);
-								continue;
-							}
 
-							RE::EffectSetting* effectSetting = opForm->As<RE::EffectSetting>();
-							if (!effectSetting) {
-								logger::warn("'{}' is not a Magic Effect.", op.OpEffectData->EffectForm);
-								continue;
-							}
-
-							if (op.OpType == OperationType::kAdd)
-								patchData.Effects->AddEffectVec.push_back({ effectSetting, op.OpEffectData->Magnitude, op.OpEffectData->Area, op.OpEffectData->Duration });
-							else
-								patchData.Effects->DeleteEffectVec.push_back({ effectSetting, op.OpEffectData->Magnitude, op.OpEffectData->Area, op.OpEffectData->Duration });
+						RE::EffectSetting* effectSetting = opForm->As<RE::EffectSetting>();
+						if (!effectSetting) {
+							logger::warn("'{}' is not a Magic Effect.", op.OpEffectData->EffectForm);
+							continue;
 						}
+
+						if (op.OpType == OperationType::kAdd)
+							patchData.Effects->AddEffectVec.push_back({ effectSetting, op.OpEffectData->Magnitude, op.OpEffectData->Area, op.OpEffectData->Duration });
+						else
+							patchData.Effects->DeleteEffectVec.push_back({ effectSetting, op.OpEffectData->Magnitude, op.OpEffectData->Area, op.OpEffectData->Duration });
 					}
 				}
 			}
 		}
+	}
 
-		logger::info("======================== Finished preparing patch for Ingestible ========================");
-		logger::info("");
+	void Prepare(const std::vector<Parsers::Statement<ConfigData>>& a_configVec) {
+		for (const auto& configData : a_configVec) {
+			if (configData.Type == Parsers::StatementType::kExpression)
+				Prepare(configData.ExpressionStatement.value());
+			else if (configData.Type == Parsers::StatementType::kConditional)
+				Prepare(configData.ConditionalStatement->Evaluates());
+		}
 	}
 
 	std::vector<RE::EffectItem*> GetEffects(RE::AlchemyItem* a_alchemyItem) {
@@ -555,7 +530,12 @@ namespace Ingestibles {
 	}
 
 	void Patch() {
+		logger::info("======================== Start preparing patch for Ingestible ========================");
+
 		Prepare(g_configVec);
+
+		logger::info("======================== Finished preparing patch for Ingestible ========================");
+		logger::info("");
 
 		logger::info("======================== Start patching for Ingestible ========================");
 

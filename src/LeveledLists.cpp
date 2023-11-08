@@ -3,7 +3,7 @@
 #include <unordered_set>
 #include <regex>
 
-#include "Configs.h"
+#include "Parsers.h"
 #include "Utils.h"
 
 namespace LeveledLists {
@@ -93,20 +93,21 @@ namespace LeveledLists {
 		std::optional<EntriesData> Entries;
 	};
 
-	std::vector<ConfigData> g_configVec;
+	std::vector<Parsers::Statement<ConfigData>> g_configVec;
 	std::unordered_map<RE::TESLeveledList*, PatchData> g_patchMap;
 
-	class LeveldListParser : public Configs::Parser<ConfigData> {
+	class LeveledListParser : public Parsers::Parser<ConfigData> {
 	public:
-		LeveldListParser(Configs::ConfigReader& a_configReader) : Configs::Parser<ConfigData>(a_configReader) {}
+		LeveledListParser(std::string_view a_configPath) : Parsers::Parser<ConfigData>(a_configPath) {}
 
-		std::optional<ConfigData> Parse() override {
-			if (reader.EndOfFile() || reader.LookAhead().empty())
+	protected:
+		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
+			if (reader.EndOfFile() || reader.Peek().empty())
 				return std::nullopt;
 
 			ConfigData configData{};
 
-			if (!parseFilter(configData))
+			if (!ParseFilter(configData))
 				return std::nullopt;
 
 			auto token = reader.GetToken();
@@ -115,12 +116,12 @@ namespace LeveledLists {
 				return std::nullopt;
 			}
 
-			if (!parseElement(configData))
+			if (!ParseElement(configData))
 				return std::nullopt;
 
-			token = reader.LookAhead();
+			token = reader.Peek();
 			if (token == "=") {
-				if (!parseAssignment(configData))
+				if (!ParseAssignment(configData))
 					return std::nullopt;
 
 				token = reader.GetToken();
@@ -136,11 +137,11 @@ namespace LeveledLists {
 					return std::nullopt;
 				}
 
-				if (!parseOperation(configData))
+				if (!ParseOperation(configData))
 					return std::nullopt;
 
 				while (true) {
-					token = reader.LookAhead();
+					token = reader.Peek();
 					if (token == ";") {
 						reader.GetToken();
 						break;
@@ -152,16 +153,59 @@ namespace LeveledLists {
 						return std::nullopt;
 					}
 
-					if (!parseOperation(configData))
+					if (!ParseOperation(configData))
 						return std::nullopt;
 				}
 			}
 
-			return configData;
+			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
 		}
 
-	private:
-		bool parseFilter(ConfigData& a_configData) {
+		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
+			std::string indent = std::string(a_indent * 4, ' ');
+
+			switch (a_configData.Element) {
+			case ElementType::kEntries:
+				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
+				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
+					std::string opLog;
+
+					switch (a_configData.Operations[ii].OpType) {
+					case OperationType::kClear:
+						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[ii].OpType));
+						break;
+
+					case OperationType::kDeleteAll:
+						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType), a_configData.Operations[ii].OpData->Form);
+						break;
+
+					case OperationType::kAdd:
+					case OperationType::kDelete:
+						opLog = fmt::format(".{}({}, {}, {}, {})", OperationTypeToString(a_configData.Operations[ii].OpType),
+							a_configData.Operations[ii].OpData->Level,
+							a_configData.Operations[ii].OpData->Form,
+							a_configData.Operations[ii].OpData->Count,
+							a_configData.Operations[ii].OpData->ChanceNone);
+						break;
+					}
+
+					if (ii == a_configData.Operations.size() - 1)
+						opLog += ";";
+
+					logger::info("{}    {}", indent, opLog);
+				}
+				break;
+
+			case ElementType::kChanceNone:
+			case ElementType::kFlags:
+			case ElementType::kMaxCount:
+				logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
+					ElementTypeToString(a_configData.Element), a_configData.AssignValue.value());
+				break;
+			}
+		}
+
+		bool ParseFilter(ConfigData& a_configData) {
 			auto token = reader.GetToken();
 			if (token == "FilterByFormID")
 				a_configData.Filter = FilterType::kFormID;
@@ -176,7 +220,7 @@ namespace LeveledLists {
 				return false;
 			}
 
-			auto filterForm = parseForm();
+			auto filterForm = ParseForm();
 			if (!filterForm.has_value())
 				return false;
 
@@ -191,7 +235,7 @@ namespace LeveledLists {
 			return true;
 		}
 
-		bool parseElement(ConfigData& a_configData) {
+		bool ParseElement(ConfigData& a_configData) {
 			auto token = reader.GetToken();
 			if (token == "Entries")
 				a_configData.Element = ElementType::kEntries;
@@ -209,7 +253,7 @@ namespace LeveledLists {
 			return true;
 		}
 
-		bool parseAssignment(ConfigData& a_configData) {
+		bool ParseAssignment(ConfigData& a_configData) {
 			auto token = reader.GetToken();
 			if (token != "=") {
 				logger::warn("Line {}, Col {}: Syntax error. Expected '='.", reader.GetLastLine(), reader.GetLastLineIndex());
@@ -248,7 +292,7 @@ namespace LeveledLists {
 			return true;
 		}
 
-		bool parseOperation(ConfigData& a_configData) {
+		bool ParseOperation(ConfigData& a_configData) {
 			OperationType opType;
 
 			auto token = reader.GetToken();
@@ -310,7 +354,7 @@ namespace LeveledLists {
 						return false;
 					}
 
-					std::optional<std::string> opForm = parseForm();
+					std::optional<std::string> opForm = ParseForm();
 					if (!opForm.has_value())
 						return false;
 
@@ -367,7 +411,7 @@ namespace LeveledLists {
 					opData->ChanceNone = static_cast<std::uint8_t>(parsedValue);
 				}
 				else if (opType == OperationType::kDeleteAll) {
-					std::optional<std::string> opForm = parseForm();
+					std::optional<std::string> opForm = ParseForm();
 					if (!opForm.has_value())
 						return false;
 
@@ -385,77 +429,12 @@ namespace LeveledLists {
 
 			return true;
 		}
-
-		std::optional<std::string> parseForm() {
-			std::string form;
-
-			auto token = reader.GetToken();
-			if (!token.starts_with('\"')) {
-				logger::warn("Line {}, Col {}: PluginName must be a string.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-			else if (!token.ends_with('\"')) {
-				logger::warn("Line {}, Col {}: String must end with '\"'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-			form += token.substr(1, token.length() - 2);
-
-			token = reader.GetToken();
-			if (token != "|") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '|'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-			form += token;
-
-			token = reader.GetToken();
-			if (token.empty() || token == ")") {
-				logger::warn("Line {}, Col {}: Expected FormID '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-				return std::nullopt;
-			}
-			form += token;
-
-			return form;
-		}
 	};
 
 	void ReadConfig(std::string_view a_path) {
-		Configs::ConfigReader reader(a_path);
-		while (!reader.EndOfFile()) {
-			LeveldListParser parser(reader);
-			auto configData = parser.Parse();
-			if (!configData.has_value()) {
-				parser.RecoverFromError();
-				continue;
-			}
-
-			g_configVec.push_back(configData.value());
-
-			if (configData->Element == ElementType::kEntries) {
-				logger::info("{}({}).{}", FilterTypeToString(configData->Filter), configData->FilterForm, ElementTypeToString(configData->Element));
-				for (std::size_t ii = 0; ii < configData->Operations.size(); ii++) {
-					std::string opLog;
-					if (configData->Operations[ii].OpType == OperationType::kClear)
-						opLog = fmt::format(".{}()", OperationTypeToString(configData->Operations[ii].OpType));
-					else if (configData->Operations[ii].OpType == OperationType::kDeleteAll)
-						opLog = fmt::format(".{}({})", OperationTypeToString(configData->Operations[ii].OpType), configData->Operations[ii].OpData->Form);
-					else
-						opLog = fmt::format(".{}({}, {}, {}, {})", OperationTypeToString(configData->Operations[ii].OpType),
-							configData->Operations[ii].OpData->Level,
-							configData->Operations[ii].OpData->Form,
-							configData->Operations[ii].OpData->Count,
-							configData->Operations[ii].OpData->ChanceNone);
-
-					if (ii == configData->Operations.size() - 1)
-						opLog += ";";
-
-					logger::info("    {}", opLog);
-				}
-			}
-			else {
-				logger::info("{}({}).{} = {};", FilterTypeToString(configData->Filter), configData->FilterForm,
-					ElementTypeToString(configData->Element), configData->AssignValue.value());
-			}
-		}
+		LeveledListParser parser(a_path);
+		auto parsedStatements = parser.Parse();
+		g_configVec.insert(g_configVec.end(), parsedStatements.begin(), parsedStatements.end());
 	}
 
 	void ReadConfigs() {
@@ -479,66 +458,68 @@ namespace LeveledLists {
 		}
 	}
 
-	void Prepare(const std::vector<ConfigData> a_configVec) {
-		logger::info("======================== Start preparing patch for LeveledList ========================");
+	void Prepare(const ConfigData& a_configData) {
+		if (a_configData.Filter == FilterType::kFormID) {
+			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+			if (!filterForm) {
+				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
+				return;
+			}
 
-		for (const auto& configData : a_configVec) {
-			if (configData.Filter == FilterType::kFormID) {
-				RE::TESForm* filterForm = Utils::GetFormFromString(configData.FilterForm);
-				if (!filterForm) {
-					logger::warn("Invalid FilterForm: '{}'.", configData.FilterForm);
-					continue;
-				}
+			RE::TESLeveledList* leveledList = filterForm->As<RE::TESLeveledList>();
+			if (!leveledList) {
+				logger::warn("'{}' is not a LeveledList.", a_configData.FilterForm);
+				return;
+			}
 
-				RE::TESLeveledList* leveledList = filterForm->As<RE::TESLeveledList>();
-				if (!leveledList) {
-					logger::warn("'{}' is not a LeveledList.", configData.FilterForm);
-					continue;
-				}
+			PatchData& patchData = g_patchMap[leveledList];
 
-				PatchData& patchData = g_patchMap[leveledList];
+			if (a_configData.Element == ElementType::kEntries) {
+				if (!patchData.Entries.has_value())
+					patchData.Entries = PatchData::EntriesData{};
 
-				if (configData.Element == ElementType::kEntries) {
-					if (!patchData.Entries.has_value())
-						patchData.Entries = PatchData::EntriesData{};
-
-					for (const auto& op : configData.Operations) {
-						if (op.OpType == OperationType::kClear) {
-							patchData.Entries->Clear = true;
+				for (const auto& op : a_configData.Operations) {
+					if (op.OpType == OperationType::kClear) {
+						patchData.Entries->Clear = true;
+					}
+					else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kDelete || op.OpType == OperationType::kDeleteAll) {
+						RE::TESForm* opForm = Utils::GetFormFromString(op.OpData->Form);
+						if (!opForm) {
+							logger::warn("Invalid Form: '{}'.", op.OpData->Form);
+							continue;
 						}
-						else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kDelete || op.OpType == OperationType::kDeleteAll) {
-							RE::TESForm* opForm = Utils::GetFormFromString(op.OpData->Form);
-							if (!opForm) {
-								logger::warn("Invalid Form: '{}'.", op.OpData->Form);
-								continue;
-							}
 
-							if (op.OpType == OperationType::kAdd)
-								patchData.Entries->AddEntryVec.push_back({ op.OpData->Level, opForm, op.OpData->Count, op.OpData->ChanceNone });
-							else if (op.OpType == OperationType::kDelete)
-								patchData.Entries->DeleteEntryVec.push_back({ op.OpData->Level, opForm, op.OpData->Count, op.OpData->ChanceNone });
-							else
-								patchData.Entries->DeleteAllEntrySet.insert(opForm);
-						}
+						if (op.OpType == OperationType::kAdd)
+							patchData.Entries->AddEntryVec.push_back({ op.OpData->Level, opForm, op.OpData->Count, op.OpData->ChanceNone });
+						else if (op.OpType == OperationType::kDelete)
+							patchData.Entries->DeleteEntryVec.push_back({ op.OpData->Level, opForm, op.OpData->Count, op.OpData->ChanceNone });
+						else
+							patchData.Entries->DeleteAllEntrySet.insert(opForm);
 					}
 				}
-				else if (configData.Element == ElementType::kChanceNone) {
-					if (configData.AssignValue.has_value())
-						patchData.ChanceNone = configData.AssignValue.value();
-				}
-				else if (configData.Element == ElementType::kMaxCount) {
-					if (configData.AssignValue.has_value())
-						patchData.MaxCount = configData.AssignValue.value();
-				}
-				else if (configData.Element == ElementType::kFlags) {
-					if (configData.AssignValue.has_value())
-						patchData.Flags = configData.AssignValue.value();
-				}
+			}
+			else if (a_configData.Element == ElementType::kChanceNone) {
+				if (a_configData.AssignValue.has_value())
+					patchData.ChanceNone = a_configData.AssignValue.value();
+			}
+			else if (a_configData.Element == ElementType::kMaxCount) {
+				if (a_configData.AssignValue.has_value())
+					patchData.MaxCount = a_configData.AssignValue.value();
+			}
+			else if (a_configData.Element == ElementType::kFlags) {
+				if (a_configData.AssignValue.has_value())
+					patchData.Flags = a_configData.AssignValue.value();
 			}
 		}
+	}
 
-		logger::info("======================== Finished preparing patch for LeveledList ========================");
-		logger::info("");
+	void Prepare(const std::vector<Parsers::Statement<ConfigData>>& a_configVec) {
+		for (const auto& configData : a_configVec) {
+			if (configData.Type == Parsers::StatementType::kExpression)
+				Prepare(configData.ExpressionStatement.value());
+			else if (configData.Type == Parsers::StatementType::kConditional)
+				Prepare(configData.ConditionalStatement->Evaluates());
+		}
 	}
 
 	std::vector<RE::LEVELED_OBJECT> GetLeveledListEntries(RE::TESLeveledList* a_leveledList) {
@@ -676,7 +657,12 @@ namespace LeveledLists {
 	}
 
 	void Patch() {
+		logger::info("======================== Start preparing patch for LeveledList ========================");
+
 		Prepare(g_configVec);
+
+		logger::info("======================== Finished preparing patch for LeveledList ========================");
+		logger::info("");
 
 		logger::info("======================== Start patching for LeveledList ========================");
 

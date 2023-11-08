@@ -3,7 +3,7 @@
 #include <regex>
 #include <any>
 
-#include "Configs.h"
+#include "Parsers.h"
 #include "Utils.h"
 
 namespace Armors {
@@ -43,20 +43,21 @@ namespace Armors {
 		std::optional<std::string> FullName;
 	};
 
-	std::vector<ConfigData> g_configVec;
+	std::vector<Parsers::Statement<ConfigData>> g_configVec;
 	std::unordered_map<RE::TESObjectARMO*, PatchData> g_patchMap;
 
-	class ArmorParser : public Configs::Parser<ConfigData> {
+	class ArmorParser : public Parsers::Parser<ConfigData> {
 	public:
-		ArmorParser(Configs::ConfigReader& a_configReader) : Configs::Parser<ConfigData>(a_configReader) {}
+		ArmorParser(std::string_view a_configPath) : Parsers::Parser<ConfigData>(a_configPath) {}
 
-		std::optional<ConfigData> Parse() override {
-			if (reader.EndOfFile() || reader.LookAhead().empty())
+	protected:
+		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
+			if (reader.EndOfFile() || reader.Peek().empty())
 				return std::nullopt;
 
 			ConfigData configData{};
 
-			if (!parseFilter(configData))
+			if (!ParseFilter(configData))
 				return std::nullopt;
 
 			auto token = reader.GetToken();
@@ -65,10 +66,10 @@ namespace Armors {
 				return std::nullopt;
 			}
 
-			if (!parseElement(configData))
+			if (!ParseElement(configData))
 				return std::nullopt;
 
-			if (!parseAssignment(configData))
+			if (!ParseAssignment(configData))
 				return std::nullopt;
 
 			token = reader.GetToken();
@@ -77,11 +78,26 @@ namespace Armors {
 				return std::nullopt;
 			}
 
-			return configData;
+			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
 		}
 
-	private:
-		bool parseFilter(ConfigData& a_config) {
+		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
+			std::string indent = std::string(a_indent * 4, ' ');
+
+			switch (a_configData.Element) {
+			case ElementType::kBipedObjectSlots:
+				logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
+					ElementTypeToString(a_configData.Element), GetBipedSlots(std::any_cast<std::uint32_t>(a_configData.AssignValue.value())));
+				break;
+
+			case ElementType::kFullName:
+				logger::info("{}{}({}).{} = \"{}\";", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
+					ElementTypeToString(a_configData.Element), std::any_cast<std::string>(a_configData.AssignValue.value()));
+				break;
+			}
+		}
+
+		bool ParseFilter(ConfigData& a_config) {
 			auto token = reader.GetToken();
 			if (token == "FilterByFormID")
 				a_config.Filter = FilterType::kFormID;
@@ -96,7 +112,7 @@ namespace Armors {
 				return false;
 			}
 
-			auto filterForm = parseForm();
+			auto filterForm = ParseForm();
 			if (!filterForm.has_value())
 				return false;
 
@@ -111,7 +127,7 @@ namespace Armors {
 			return true;
 		}
 
-		bool parseElement(ConfigData& a_config) {
+		bool ParseElement(ConfigData& a_config) {
 			auto token = reader.GetToken();
 			if (token == "BipedObjectSlots")
 				a_config.Element = ElementType::kBipedObjectSlots;
@@ -125,7 +141,7 @@ namespace Armors {
 			return true;
 		}
 
-		bool parseAssignment(ConfigData& a_config) {
+		bool ParseAssignment(ConfigData& a_config) {
 			auto token = reader.GetToken();
 			if (token != "=") {
 				logger::warn("Line {}, Col {}: Syntax error. Expected '='.", reader.GetLastLine(), reader.GetLastLineIndex());
@@ -135,7 +151,7 @@ namespace Armors {
 			if (a_config.Element == ElementType::kBipedObjectSlots) {
 				std::uint32_t bipedObjectSlotsValue = 0;
 
-				auto bipedSlot = parseBipedSlot();
+				auto bipedSlot = ParseBipedSlot();
 				if (!bipedSlot.has_value())
 					return false;
 
@@ -143,7 +159,7 @@ namespace Armors {
 					bipedObjectSlotsValue |= 1 << (bipedSlot.value() - 30);
 
 				while (true) {
-					token = reader.LookAhead();
+					token = reader.Peek();
 					if (token == ";")
 						break;
 
@@ -153,7 +169,7 @@ namespace Armors {
 						return false;
 					}
 
-					bipedSlot = parseBipedSlot();
+					bipedSlot = ParseBipedSlot();
 					if (!bipedSlot.has_value())
 						return false;
 
@@ -185,7 +201,7 @@ namespace Armors {
 			return true;
 		}
 
-		std::optional<std::uint32_t> parseBipedSlot() {
+		std::optional<std::uint32_t> ParseBipedSlot() {
 			unsigned long parsedValue;
 
 			auto token = reader.GetToken();
@@ -208,76 +224,29 @@ namespace Armors {
 			return static_cast<std::uint32_t>(parsedValue);
 		}
 
-		std::optional<std::string> parseForm() {
-			std::string form;
+		std::string GetBipedSlots(std::uint32_t a_bipedObjSlots) {
+			std::string retStr;
+			std::string separtor = " | ";
 
-			auto token = reader.GetToken();
-			if (!token.starts_with('\"')) {
-				logger::warn("Line {}, Col {}: PluginName must be a string.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-			else if (!token.ends_with('\"')) {
-				logger::warn("Line {}, Col {}: String must end with '\"'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-			form += token.substr(1, token.length() - 2);
+			if (a_bipedObjSlots == 0)
+				return "0";
 
-			token = reader.GetToken();
-			if (token != "|") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '|'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
+			for (std::size_t ii = 0; ii < 32; ii++) {
+				if (a_bipedObjSlots & (1 << ii))
+					retStr += std::to_string(ii + 30) + separtor;
 			}
-			form += token;
 
-			token = reader.GetToken();
-			if (token.empty() || token == ")") {
-				logger::warn("Line {}, Col {}: Expected FormID '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-				return std::nullopt;
-			}
-			form += token;
+			if (retStr.empty())
+				return retStr;
 
-			return form;
+			return retStr.substr(0, retStr.size() - separtor.size());
 		}
 	};
 
-	std::string GetBipedSlots(std::uint32_t a_bipedObjSlots) {
-		std::string retStr;
-		std::string separtor = " | ";
-
-		if (a_bipedObjSlots == 0)
-			return "0";
-
-		for (std::size_t ii = 0; ii < 32; ii++) {
-			if (a_bipedObjSlots & (1 << ii))
-				retStr += std::to_string(ii + 30) + separtor;
-		}
-
-		if (retStr.empty())
-			return retStr;
-
-		return retStr.substr(0, retStr.size() - separtor.size());
-	}
-
 	void ReadConfig(std::string_view a_path) {
-		Configs::ConfigReader reader(a_path);
-
-		while (!reader.EndOfFile()) {
-			ArmorParser parser(reader);
-			auto configData = parser.Parse();
-			if (!configData.has_value()) {
-				parser.RecoverFromError();
-				continue;
-			}
-
-			g_configVec.push_back(configData.value());
-
-			if (configData->Element == ElementType::kBipedObjectSlots)
-				logger::info("{}({}).{} = {};", FilterTypeToString(configData->Filter), configData->FilterForm,
-					ElementTypeToString(configData->Element), GetBipedSlots(std::any_cast<std::uint32_t>(configData->AssignValue.value())));
-			else if (configData->Element == ElementType::kFullName)
-				logger::info("{}({}).{} = \"{}\";", FilterTypeToString(configData->Filter), configData->FilterForm,
-					ElementTypeToString(configData->Element), std::any_cast<std::string>(configData->AssignValue.value()));
-		}
+		ArmorParser parser(a_path);
+		auto parsedStatements = parser.Parse();
+		g_configVec.insert(g_configVec.end(), parsedStatements.begin(), parsedStatements.end());
 	}
 
 	void ReadConfigs() {
@@ -301,40 +270,47 @@ namespace Armors {
 		}
 	}
 
-	void Prepare(const std::vector<ConfigData>& a_configVec) {
-		logger::info("======================== Start preparing patch for Armor ========================");
+	void Prepare(const ConfigData& a_configData) {
+		if (a_configData.Filter == FilterType::kFormID) {
+			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+			if (!filterForm) {
+				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
+				return;
+			}
 
-		for (const auto& configData : a_configVec) {
-			if (configData.Filter == FilterType::kFormID) {
-				RE::TESForm* filterForm = Utils::GetFormFromString(configData.FilterForm);
-				if (!filterForm) {
-					logger::warn("Invalid FilterForm: '{}'.", configData.FilterForm);
-					continue;
-				}
+			RE::TESObjectARMO* armo = filterForm->As<RE::TESObjectARMO>();
+			if (!armo) {
+				logger::warn("'{}' is not a Armor.", a_configData.FilterForm);
+				return;
+			}
 
-				RE::TESObjectARMO* armo = filterForm->As<RE::TESObjectARMO>();
-				if (!armo) {
-					logger::warn("'{}' is not a Armor.", configData.FilterForm);
-					continue;
-				}
-
-				if (configData.Element == ElementType::kBipedObjectSlots) {
-					if (configData.AssignValue.has_value())
-						g_patchMap[armo].BipedObjectSlots = std::any_cast<std::uint32_t>(configData.AssignValue.value());
-				}
-				else if (configData.Element == ElementType::kFullName) {
-					if (configData.AssignValue.has_value())
-						g_patchMap[armo].FullName = std::any_cast<std::string>(configData.AssignValue.value());
-				}
+			if (a_configData.Element == ElementType::kBipedObjectSlots) {
+				if (a_configData.AssignValue.has_value())
+					g_patchMap[armo].BipedObjectSlots = std::any_cast<std::uint32_t>(a_configData.AssignValue.value());
+			}
+			else if (a_configData.Element == ElementType::kFullName) {
+				if (a_configData.AssignValue.has_value())
+					g_patchMap[armo].FullName = std::any_cast<std::string>(a_configData.AssignValue.value());
 			}
 		}
+	}
 
-		logger::info("======================== Finished preparing patch for Armor ========================");
-		logger::info("");
+	void Prepare(const std::vector<Parsers::Statement<ConfigData>>& a_configVec) {
+		for (const auto& configData : a_configVec) {
+			if (configData.Type == Parsers::StatementType::kExpression)
+				Prepare(configData.ExpressionStatement.value());
+			else if (configData.Type == Parsers::StatementType::kConditional)
+				Prepare(configData.ConditionalStatement->Evaluates());
+		}
 	}
 
 	void Patch() {
+		logger::info("======================== Start preparing patch for Armor ========================");
+
 		Prepare(g_configVec);
+
+		logger::info("======================== Finished preparing patch for Armor ========================");
+		logger::info("");
 
 		logger::info("======================== Start patching for Armor ========================");
 
