@@ -9,6 +9,7 @@
 #include "Outfits.h"
 #include "Quests.h"
 #include "Races.h"
+#include "Weapons.h"
 
 void Patch() {
 	auto patchStart = std::chrono::high_resolution_clock::now();
@@ -24,6 +25,7 @@ void Patch() {
 	Outfits::Patch();
 	Quests::Patch();
 	Races::Patch();
+	Weapons::Patch();
 
 	auto patchEnd = std::chrono::high_resolution_clock::now();
 	std::chrono::duration<double> patchDuration = patchEnd - patchStart;
@@ -100,6 +102,7 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface * a_
 	Outfits::ReadConfigs();
 	Quests::ReadConfigs();
 	Races::ReadConfigs();
+	Weapons::ReadConfigs();
 
 	auto readConfigEnd = std::chrono::high_resolution_clock::now();
 	std::chrono::duration<double> readConfigDuration = readConfigEnd - readConfigStart;

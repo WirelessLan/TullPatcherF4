@@ -21,6 +21,8 @@ set(SOURCES
 	src/Quests.cpp
 	src/Races.h
 	src/Races.cpp
+	src/Weapons.h
+	src/Weapons.cpp
 	src/Configs.h
 	src/Configs.cpp
 	src/Parsers.h

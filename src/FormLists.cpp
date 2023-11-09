@@ -1,5 +1,6 @@
 #include "FormLists.h"
 
+#include <unordered_set>
 #include <regex>
 
 #include "Parsers.h"
@@ -31,6 +32,7 @@ namespace FormLists {
 	enum class OperationType {
 		kClear,
 		kAdd,
+		kAddIfNotExists,
 		kDelete
 	};
 
@@ -38,6 +40,7 @@ namespace FormLists {
 		switch (a_value) {
 		case OperationType::kClear: return "Clear";
 		case OperationType::kAdd: return "Add";
+		case OperationType::kAddIfNotExists: return "AddIfNotExists";
 		case OperationType::kDelete: return "Delete";
 		default: return std::string_view{};
 		}
@@ -59,6 +62,7 @@ namespace FormLists {
 		struct ListData {
 			bool Clear = false;
 			std::vector<RE::TESForm*> AddFormVec;
+			std::unordered_set<RE::TESForm*> AddUniqueFormSet;
 			std::vector<RE::TESForm*> DeleteFormVec;
 		};
 
@@ -189,6 +193,8 @@ namespace FormLists {
 				opType = OperationType::kClear;
 			else if (token == "Add")
 				opType = OperationType::kAdd;
+			else if (token == "AddIfNotExists")
+				opType = OperationType::kAddIfNotExists;
 			else if (token == "Delete")
 				opType = OperationType::kDelete;
 			else {
@@ -272,7 +278,7 @@ namespace FormLists {
 					if (op.OpType == OperationType::kClear) {
 						patchData.List->Clear = true;
 					}
-					else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kDelete) {
+					else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kAddIfNotExists || op.OpType == OperationType::kDelete) {
 						RE::TESForm* opForm = Utils::GetFormFromString(op.OpForm.value());
 						if (!opForm) {
 							logger::warn("Invalid Form: '{}'.", op.OpForm.value());
@@ -281,6 +287,8 @@ namespace FormLists {
 
 						if (op.OpType == OperationType::kAdd)
 							patchData.List->AddFormVec.push_back(opForm);
+						else if (op.OpType == OperationType::kAddIfNotExists)
+							patchData.List->AddUniqueFormSet.insert(opForm);
 						else
 							patchData.List->DeleteFormVec.push_back(opForm);
 					}
@@ -324,6 +332,14 @@ namespace FormLists {
 		if (!a_listData.AddFormVec.empty()) {
 			for (const auto& addForm : a_listData.AddFormVec) {
 				a_formList->arrayOfForms.push_back(addForm);
+			}
+		}
+
+		// Add if not exists
+		if (!a_listData.AddUniqueFormSet.empty()) {
+			for (const auto& addForm : a_listData.AddUniqueFormSet) {
+				if (std::find(a_formList->arrayOfForms.begin(), a_formList->arrayOfForms.end(), addForm) == a_formList->arrayOfForms.end())
+					a_formList->arrayOfForms.push_back(addForm);
 			}
 		}
 	}
