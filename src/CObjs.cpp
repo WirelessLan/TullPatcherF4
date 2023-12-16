@@ -455,8 +455,8 @@ namespace CObjs {
 			RE::MemoryManager& mm = RE::MemoryManager::GetSingleton();
 
 			std::size_t newSize = sizeof(std::uint16_t) * a_keywordIndexSet.size();
-			RE::BGSTypedKeywordValue<RE::BGSKeyword::KeywordType::kRecipeFilter>* newArray
-				= (RE::BGSTypedKeywordValue<RE::BGSKeyword::KeywordType::kRecipeFilter>*)mm.Allocate(newSize, 0, false);
+			RE::BGSTypedKeywordValue<RE::KeywordType::kRecipeFilter>* newArray
+				= (RE::BGSTypedKeywordValue<RE::KeywordType::kRecipeFilter>*)mm.Allocate(newSize, 0, false);
 			if (!newArray) {
 				logger::critical("Failed to allocate the new Category Keywords array.");
 				return;
@@ -476,7 +476,7 @@ namespace CObjs {
 
 		std::uint32_t ii = 0;
 		for (const auto keywordIndex : a_keywordIndexSet) {
-			RE::BGSTypedKeywordValue<RE::BGSKeyword::KeywordType::kRecipeFilter> newValue{ keywordIndex };
+			RE::BGSTypedKeywordValue<RE::KeywordType::kRecipeFilter> newValue{ keywordIndex };
 			a_cobjForm->filterKeywords.array[ii] = newValue;
 			ii++;
 		}

@@ -1,5 +1,6 @@
 #include "Races.h"
 
+#include <unordered_set>
 #include <regex>
 #include <any>
 
@@ -23,7 +24,9 @@ namespace Races {
 		kFemaleSkeletalModel,
 		kBodyPartData,
 		kBipedObjectSlots,
-		kProperties
+		kProperties,
+		kMalePresets,
+		kFemalePresets
 	};
 
 	std::string_view ElementTypeToString(ElementType a_value) {
@@ -33,6 +36,8 @@ namespace Races {
 		case ElementType::kBodyPartData: return "BodyPartData";
 		case ElementType::kBipedObjectSlots: return "BipedObjectSlots";
 		case ElementType::kProperties: return "Properties";
+		case ElementType::kMalePresets: return "MalePresets";
+		case ElementType::kFemalePresets: return "FemalePresets";
 		default: return std::string_view{};
 		}
 	}
@@ -40,6 +45,8 @@ namespace Races {
 	enum class OperationType {
 		kClear,
 		kSet,
+		kAdd,
+		kAddIfNotExists,
 		kDelete
 	};
 
@@ -47,6 +54,8 @@ namespace Races {
 		switch (a_value) {
 		case OperationType::kClear: return "Clear";
 		case OperationType::kSet: return "Set";
+		case OperationType::kAdd: return "Add";
+		case OperationType::kAddIfNotExists: return "AddIfNotExists";
 		case OperationType::kDelete: return "Delete";
 		default: return std::string_view{};
 		}
@@ -60,7 +69,7 @@ namespace Races {
 			};
 
 			OperationType OpType;
-			std::optional<PropertyData> OpProperty;
+			std::optional<std::any> OpData;
 		};
 
 		FilterType Filter;
@@ -82,11 +91,20 @@ namespace Races {
 			std::vector<Property> DeletePropertyVec;
 		};
 
+		struct PresetsData {
+			bool Clear;
+			std::vector<RE::TESNPC*> AddPresetVec;
+			std::unordered_set<RE::TESNPC*> AddUniquePresetSet;
+			std::vector<RE::TESNPC*> DeletePresetVec;
+		};
+
 		std::optional<std::string> MaleSkeletalModel;
 		std::optional<std::string> FemaleSkeletalModel;
 		std::optional<RE::BGSBodyPartData*> BodyPartData;
 		std::optional<std::uint32_t> BipedObjectSlots;
 		std::optional<PropertiesData> Properties;
+		std::optional<PresetsData> MalePresets;
+		std::optional<PresetsData> FemalePresets;
 	};
 
 	std::vector<Parsers::Statement<ConfigData>> g_configVec;
@@ -176,6 +194,8 @@ namespace Races {
 				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
 					std::string opLog;
 
+					ConfigData::Operation::PropertyData propData = std::any_cast<ConfigData::Operation::PropertyData>(a_configData.Operations[ii].OpData.value());
+
 					switch (a_configData.Operations[ii].OpType) {
 					case OperationType::kClear:
 						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[ii].OpType));
@@ -183,12 +203,38 @@ namespace Races {
 
 					case OperationType::kSet:
 						opLog = fmt::format(".{}({}, {})", OperationTypeToString(a_configData.Operations[ii].OpType),
-							a_configData.Operations[ii].OpProperty->ActorValueForm, a_configData.Operations[ii].OpProperty->Value);
+							propData.ActorValueForm, propData.Value);
 						break;
 
 					case OperationType::kDelete:
 						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType),
-							a_configData.Operations[ii].OpProperty->ActorValueForm);
+							propData.ActorValueForm);
+						break;
+					}
+
+					if (ii == a_configData.Operations.size() - 1)
+						opLog += ";";
+
+					logger::info("{}    {}", indent, opLog);
+				}
+				break;
+
+			case ElementType::kMalePresets:
+			case ElementType::kFemalePresets:
+				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
+				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
+					std::string opLog;
+
+					switch (a_configData.Operations[ii].OpType) {
+					case OperationType::kClear:
+						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[ii].OpType));
+						break;
+
+					case OperationType::kAdd:
+					case OperationType::kAddIfNotExists:
+					case OperationType::kDelete:
+						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType),
+							std::any_cast<std::string>(a_configData.Operations[ii].OpData.value()));
 						break;
 					}
 
@@ -249,6 +295,10 @@ namespace Races {
 				a_config.Element = ElementType::kBipedObjectSlots;
 			else if (token == "Properties")
 				a_config.Element = ElementType::kProperties;
+			else if (token == "MalePresets")
+				a_config.Element = ElementType::kMalePresets;
+			else if (token == "FemalePresets")
+				a_config.Element = ElementType::kFemalePresets;
 			else {
 				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -332,6 +382,10 @@ namespace Races {
 				newOp.OpType = OperationType::kClear;
 			else if (token == "Set")
 				newOp.OpType = OperationType::kSet;
+			else if (token == "Add")
+				newOp.OpType = OperationType::kAdd;
+			else if (token == "AddIfNotExists")
+				newOp.OpType = OperationType::kAddIfNotExists;
 			else if (token == "Delete")
 				newOp.OpType = OperationType::kDelete;
 			else {
@@ -339,12 +393,28 @@ namespace Races {
 				return false;
 			}
 
-			if (newOp.OpType == OperationType::kClear || newOp.OpType == OperationType::kSet || newOp.OpType == OperationType::kDelete) {
-				if (a_config.Element != ElementType::kProperties) {
+			switch (a_config.Element) {
+			case ElementType::kProperties:
+				if (newOp.OpType != OperationType::kClear && newOp.OpType != OperationType::kSet && newOp.OpType != OperationType::kDelete) {
 					logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.",
 						reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element), OperationTypeToString(newOp.OpType));
 					return false;
 				}
+				break;
+
+			case ElementType::kMalePresets:
+			case ElementType::kFemalePresets:
+				if (newOp.OpType != OperationType::kClear && newOp.OpType != OperationType::kAdd && newOp.OpType != OperationType::kAddIfNotExists && newOp.OpType != OperationType::kDelete) {
+					logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.",
+						reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element), OperationTypeToString(newOp.OpType));
+					return false;
+				}
+				break;
+
+			default:
+				logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.",
+					reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element), OperationTypeToString(newOp.OpType));
+				return false;
 			}
 
 			token = reader.GetToken();
@@ -353,15 +423,16 @@ namespace Races {
 				return false;
 			}
 
-			if (a_config.Element == ElementType::kProperties) {
-				newOp.OpProperty = ConfigData::Operation::PropertyData{};
+			switch (a_config.Element) {
+			case ElementType::kProperties: {
+				ConfigData::Operation::PropertyData newPropData = ConfigData::Operation::PropertyData{};
 
 				if (newOp.OpType != OperationType::kClear) {
 					std::optional<std::string> opForm = ParseForm();
 					if (!opForm.has_value())
 						return false;
 
-					newOp.OpProperty->ActorValueForm = opForm.value();
+					newPropData.ActorValueForm = opForm.value();
 
 					if (newOp.OpType == OperationType::kSet) {
 						token = reader.GetToken();
@@ -374,9 +445,26 @@ namespace Races {
 						if (!opValue.has_value())
 							return false;
 
-						newOp.OpProperty->Value = opValue.value();
+						newPropData.Value = opValue.value();
 					}
 				}
+
+				newOp.OpData = std::any(newPropData);
+
+				break;
+			}
+
+			case ElementType::kMalePresets:
+			case ElementType::kFemalePresets:
+				if (newOp.OpType != OperationType::kClear) {
+					std::optional<std::string> opForm = ParseForm();
+					if (!opForm.has_value())
+						return false;
+
+					newOp.OpData = std::any(opForm.value());
+				}
+
+				break;
 			}
 
 			token = reader.GetToken();
@@ -549,22 +637,91 @@ namespace Races {
 						patchData.Properties->Clear = true;
 					}
 					else if (op.OpType == OperationType::kSet || op.OpType == OperationType::kDelete) {
-						RE::TESForm* opForm = Utils::GetFormFromString(op.OpProperty->ActorValueForm);
+						ConfigData::Operation::PropertyData propData = std::any_cast<ConfigData::Operation::PropertyData>(op.OpData.value());
+						RE::TESForm* opForm = Utils::GetFormFromString(propData.ActorValueForm);
 						if (!opForm) {
-							logger::warn("Invalid Form: '{}'.", op.OpProperty->ActorValueForm);
+							logger::warn("Invalid Form: '{}'.", propData.ActorValueForm);
 							continue;
 						}
 
 						RE::ActorValueInfo* avInfo = opForm->As<RE::ActorValueInfo>();
 						if (!avInfo) {
-							logger::warn("'{}' is not a ActorValue", op.OpProperty->ActorValueForm);
+							logger::warn("'{}' is not a ActorValue.", propData.ActorValueForm);
 							continue;
 						}
 
 						if (op.OpType == OperationType::kSet)
-							patchData.Properties->SetPropertyVec.push_back({ avInfo, op.OpProperty->Value });
+							patchData.Properties->SetPropertyVec.push_back({ avInfo, propData.Value });
 						else
 							patchData.Properties->DeletePropertyVec.push_back({ avInfo, 0 });
+					}
+				}
+			}
+			else if (a_configData.Element == ElementType::kMalePresets) {
+				PatchData& patchData = g_patchMap[race];
+
+				if (!patchData.MalePresets.has_value())
+					patchData.MalePresets = PatchData::PresetsData{};
+
+				for (const auto& op : a_configData.Operations) {
+					if (op.OpType == OperationType::kClear) {
+						patchData.MalePresets->Clear = true;
+					}
+					else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kAddIfNotExists || op.OpType == OperationType::kDelete) {
+						std::string opFormStr = std::any_cast<std::string>(op.OpData.value());
+
+						RE::TESForm* opForm = Utils::GetFormFromString(opFormStr);
+						if (!opForm) {
+							logger::warn("Invalid Form: '{}'.", opFormStr);
+							continue;
+						}
+
+						RE::TESNPC* presetNPC = opForm->As<RE::TESNPC>();
+						if (!presetNPC) {
+							logger::warn("'{}' is not a NPC.", opFormStr);
+							continue;
+						}
+
+						if (op.OpType == OperationType::kAdd)
+							patchData.MalePresets->AddPresetVec.push_back(presetNPC);
+						else if (op.OpType == OperationType::kAddIfNotExists)
+							patchData.MalePresets->AddUniquePresetSet.insert(presetNPC);
+						else
+							patchData.MalePresets->DeletePresetVec.push_back(presetNPC);
+					}
+				}
+			}
+			else if (a_configData.Element == ElementType::kFemalePresets) {
+				PatchData& patchData = g_patchMap[race];
+
+				if (!patchData.FemalePresets.has_value())
+					patchData.FemalePresets = PatchData::PresetsData{};
+
+				for (const auto& op : a_configData.Operations) {
+					if (op.OpType == OperationType::kClear) {
+						patchData.FemalePresets->Clear = true;
+					}
+					else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kAddIfNotExists || op.OpType == OperationType::kDelete) {
+						std::string opFormStr = std::any_cast<std::string>(op.OpData.value());
+
+						RE::TESForm* opForm = Utils::GetFormFromString(opFormStr);
+						if (!opForm) {
+							logger::warn("Invalid Form: '{}'.", opFormStr);
+							continue;
+						}
+
+						RE::TESNPC* presetNPC = opForm->As<RE::TESNPC>();
+						if (!presetNPC) {
+							logger::warn("'{}' is not a NPC.", opFormStr);
+							continue;
+						}
+
+						if (op.OpType == OperationType::kAdd)
+							patchData.FemalePresets->AddPresetVec.push_back(presetNPC);
+						else if (op.OpType == OperationType::kAddIfNotExists)
+							patchData.FemalePresets->AddUniquePresetSet.insert(presetNPC);
+						else
+							patchData.FemalePresets->DeletePresetVec.push_back(presetNPC);
 					}
 				}
 			}
@@ -627,6 +784,49 @@ namespace Races {
 		}
 	}
 
+	void PatchPresets(RE::TESRace* a_race, std::uint8_t a_sex, const PatchData::PresetsData& a_presetsData) {
+		if (!a_race->faceRelatedData[a_sex])
+			return;
+
+		bool isCleared = false;
+
+		// Clear
+		if (a_presetsData.Clear)
+			a_race->faceRelatedData[a_sex]->presetNPCs->clear();
+
+		// Delete
+		if (!isCleared) {
+			for (const auto& delPreset : a_presetsData.DeletePresetVec) {
+				for (auto it = a_race->faceRelatedData[a_sex]->presetNPCs->begin(); it != a_race->faceRelatedData[a_sex]->presetNPCs->end(); it++) {
+					if (delPreset != *it)
+						continue;
+
+					a_race->faceRelatedData[a_sex]->presetNPCs->erase(it);
+					break;
+				}
+			}
+		}
+
+		for (const auto& addPreset : a_presetsData.AddPresetVec) {
+			a_race->faceRelatedData[a_sex]->presetNPCs->push_back(addPreset);
+		}
+
+		for (const auto& uniqPreset : a_presetsData.AddUniquePresetSet) {
+			bool found = false;
+
+			for (const auto& preset : *a_race->faceRelatedData[a_sex]->presetNPCs) {
+				if (preset != uniqPreset)
+					continue;
+
+				found = true;
+				break;
+			}
+
+			if (!found)
+				a_race->faceRelatedData[a_sex]->presetNPCs->push_back(uniqPreset);
+		}
+	}
+
 	void Patch() {
 		logger::info("======================== Start preparing patch for Race ========================");
 
@@ -652,6 +852,12 @@ namespace Races {
 
 			if (patchData.second.Properties.has_value())
 				PatchProperties(patchData.first, patchData.second.Properties.value());
+
+			if (patchData.second.MalePresets.has_value())
+				PatchPresets(patchData.first, 0, patchData.second.MalePresets.value());
+
+			if (patchData.second.FemalePresets.has_value())
+				PatchPresets(patchData.first, 1, patchData.second.FemalePresets.value());
 		}
 
 		logger::info("======================== Finished patching for Race ========================");
