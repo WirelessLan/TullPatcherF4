@@ -3,6 +3,8 @@ set(SOURCES
 	src/ArmorAddons.cpp
 	src/Armors.h
 	src/Armors.cpp
+	src/Cells.h
+	src/Cells.cpp
 	src/CObjs.h
 	src/CObjs.cpp
 	src/FormLists.h
@@ -23,6 +25,8 @@ set(SOURCES
 	src/Races.cpp
 	src/Weapons.h
 	src/Weapons.cpp
+	src/Worldspaces.h
+	src/Worldspaces.cpp
 	src/Configs.h
 	src/Configs.cpp
 	src/Parsers.h

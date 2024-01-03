@@ -1,5 +1,6 @@
 #include "ArmorAddons.h"
 #include "Armors.h"
+#include "Cells.h"
 #include "CObjs.h"
 #include "FormLists.h"
 #include "Ingestibles.h"
@@ -10,12 +11,14 @@
 #include "Quests.h"
 #include "Races.h"
 #include "Weapons.h"
+#include "Worldspaces.h"
 
 void Patch() {
 	auto patchStart = std::chrono::high_resolution_clock::now();
 
 	ArmorAddons::Patch();
 	Armors::Patch();
+	Cells::Patch();
 	CObjs::Patch();
 	FormLists::Patch();
 	Ingestibles::Patch();
@@ -26,6 +29,7 @@ void Patch() {
 	Quests::Patch();
 	Races::Patch();
 	Weapons::Patch();
+	WorldSpaces::Patch();
 
 	auto patchEnd = std::chrono::high_resolution_clock::now();
 	std::chrono::duration<double> patchDuration = patchEnd - patchStart;
@@ -93,6 +97,7 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface * a_
 
 	ArmorAddons::ReadConfigs();
 	Armors::ReadConfigs();
+	Cells::ReadConfigs();
 	CObjs::ReadConfigs();
 	FormLists::ReadConfigs();
 	Ingestibles::ReadConfigs();
@@ -103,6 +108,7 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface * a_
 	Quests::ReadConfigs();
 	Races::ReadConfigs();
 	Weapons::ReadConfigs();
+	WorldSpaces::ReadConfigs();
 
 	auto readConfigEnd = std::chrono::high_resolution_clock::now();
 	std::chrono::duration<double> readConfigDuration = readConfigEnd - readConfigStart;
