@@ -2,6 +2,7 @@
 
 #include <unordered_set>
 #include <regex>
+#include <any>
 
 #include "Parsers.h"
 #include "Utils.h"
@@ -21,12 +22,18 @@ namespace CObjs {
 	}
 
 	enum class ElementType {
-		kCategories
+		kCategories,
+		kComponents,
+		kCreatedObject,
+		kCreatedObjectCount
 	};
 
 	std::string_view ElementTypeToString(ElementType a_value) {
 		switch (a_value) {
 		case ElementType::kCategories: return "Categories";
+		case ElementType::kComponents: return "Components";
+		case ElementType::kCreatedObject: return "CreatedObject";
+		case ElementType::kCreatedObjectCount: return "CreatedObjectCount";
 		default: return std::string_view{};
 		}
 	}
@@ -48,35 +55,50 @@ namespace CObjs {
 
 	struct ConfigData {
 		struct Operation {
+			struct ComponentData {
+				std::string Form;
+				std::uint32_t Count;
+			};
+
 			OperationType OpType;
-			std::optional<std::string> OpForm;
+			std::optional<std::any> OpData;
 		};
 
 		FilterType Filter;
 		std::string FilterForm;
 		ElementType Element;
 		std::vector<Operation> Operations;
+		std::optional<std::any> AssignValue;
 	};
 
 	struct PatchData {
-		struct Data {
-			struct CategoriesData {
-				bool Clear = false;
-				std::unordered_set<RE::BGSKeyword*> AddKeywordSet;
-				std::unordered_set<RE::BGSKeyword*> DeleteKeywordSet;
-			};
-
-			std::optional<CategoriesData> Categories;
+		struct CategoriesData {
+			bool Clear = false;
+			std::unordered_set<RE::BGSKeyword*> AddKeywordSet;
+			std::unordered_set<RE::BGSKeyword*> DeleteKeywordSet;
 		};
 
-		std::optional<Data> FilterByFormID;
-		std::optional<Data> FilterByCategoryKeyword;
+		struct ComponentsData {
+			struct Component {
+				RE::TESForm* Form;
+				std::uint32_t Count;
+			};
+
+			bool Clear = false;
+			std::vector<Component> AddComponentVec;
+			std::vector<RE::TESForm*> DeleteComponentVec;
+		};
+
+		std::optional<CategoriesData> Categories;
+		std::optional<ComponentsData> Components;
+		std::optional<RE::TESForm*> CreatedObject;
+		std::optional<std::uint16_t> CreatedObjectCount;
 	};
 
 	std::vector<Parsers::Statement<ConfigData>> g_configVec;
-	std::unordered_map<RE::BGSConstructibleObject*, PatchData> g_patchMap;
 	std::unordered_map<RE::BGSKeyword*, std::uint16_t> g_keywordIndexMap;
-	std::unordered_map<std::uint16_t, std::vector<ConfigData::Operation>> g_cobjFilterMap;
+	std::unordered_map<RE::BGSConstructibleObject*, PatchData> g_filterByFormIDPatchMap;
+	std::unordered_map<std::uint16_t, PatchData> g_filterByCategoryKeywordPatchMap;
 
 	class CObjParser : public Parsers::Parser<ConfigData> {
 	public:
@@ -101,30 +123,43 @@ namespace CObjs {
 			if (!ParseElement(configData))
 				return std::nullopt;
 
-			token = reader.GetToken();
-			if (token != ".") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-
-			if (!ParseOperation(configData))
-				return std::nullopt;
-
-			while (true) {
-				token = reader.Peek();
-				if (token == ";") {
-					reader.GetToken();
-					break;
-				}
+			token = reader.Peek();
+			if (token == "=") {
+				if (!ParseAssignment(configData))
+					return std::nullopt;
 
 				token = reader.GetToken();
+				if (token != ";") {
+					logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return std::nullopt;
+				}
+			}
+			else {
+				token = reader.GetToken();
 				if (token != ".") {
-					logger::warn("Line {}, Col {}: Syntax error. Expected '.' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
 					return std::nullopt;
 				}
 
 				if (!ParseOperation(configData))
 					return std::nullopt;
+
+				while (true) {
+					token = reader.Peek();
+					if (token == ";") {
+						reader.GetToken();
+						break;
+					}
+
+					token = reader.GetToken();
+					if (token != ".") {
+						logger::warn("Line {}, Col {}: Syntax error. Expected '.' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+						return std::nullopt;
+					}
+
+					if (!ParseOperation(configData))
+						return std::nullopt;
+				}
 			}
 
 			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
@@ -137,14 +172,63 @@ namespace CObjs {
 			case ElementType::kCategories:
 				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
 				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
-					std::string opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType),
-						a_configData.Operations[ii].OpForm.has_value() ? a_configData.Operations[ii].OpForm.value() : "");
+					std::string opLog;
+
+					switch (a_configData.Operations[ii].OpType) {
+					case OperationType::kClear:
+						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[ii].OpType));
+						break;
+
+					case OperationType::kAdd:
+					case OperationType::kDelete:
+						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType), std::any_cast<std::string>(a_configData.Operations[ii].OpData.value()));
+						break;
+					}
 
 					if (ii == a_configData.Operations.size() - 1)
 						opLog += ";";
 
 					logger::info("{}    {}", indent, opLog);
 				}
+				break;
+
+			case ElementType::kComponents:
+				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
+				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
+					std::string opLog;
+
+					switch (a_configData.Operations[ii].OpType) {
+					case OperationType::kClear:
+						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[ii].OpType));
+						break;
+
+					case OperationType::kAdd:
+						opLog = fmt::format(".{}({}, {})", OperationTypeToString(a_configData.Operations[ii].OpType),
+							std::any_cast<ConfigData::Operation::ComponentData>(a_configData.Operations[ii].OpData.value()).Form,
+							std::any_cast<ConfigData::Operation::ComponentData>(a_configData.Operations[ii].OpData.value()).Count);
+						break;
+
+					case OperationType::kDelete:
+						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType),
+							std::any_cast<ConfigData::Operation::ComponentData>(a_configData.Operations[ii].OpData.value()).Form);
+						break;
+					}
+
+					if (ii == a_configData.Operations.size() - 1)
+						opLog += ";";
+
+					logger::info("{}    {}", indent, opLog);
+				}
+				break;
+
+			case ElementType::kCreatedObject:
+				logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element),
+					std::any_cast<std::string>(a_configData.AssignValue.value()));
+				break;
+
+			case ElementType::kCreatedObjectCount:
+				logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element), 
+					std::any_cast<std::uint16_t>(a_configData.AssignValue.value()));
 				break;
 			}
 		}
@@ -185,6 +269,12 @@ namespace CObjs {
 			auto token = reader.GetToken();
 			if (token == "Categories")
 				a_configData.Element = ElementType::kCategories;
+			else if (token == "Components")
+				a_configData.Element = ElementType::kComponents;
+			else if (token == "CreatedObject")
+				a_configData.Element = ElementType::kCreatedObject;
+			else if (token == "CreatedObjectCount")
+				a_configData.Element = ElementType::kCreatedObjectCount;
 			else {
 				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -193,27 +283,92 @@ namespace CObjs {
 			return true;
 		}
 
+		bool ParseAssignment(ConfigData& a_configData) {
+			auto token = reader.GetToken();
+			if (token != "=") {
+				logger::warn("Line {}, Col {}: Syntax error. Expected '='.", reader.GetLastLine(), reader.GetLastLineIndex());
+				return false;
+			}
+
+			if (a_configData.Element == ElementType::kCreatedObject) {
+				std::optional<std::string> form = ParseForm();
+				if (!form.has_value())
+					return false;
+
+				a_configData.AssignValue = std::any(form.value());
+			}
+			else if (a_configData.Element == ElementType::kCreatedObjectCount) {
+				token = reader.GetToken();
+				if (token.empty() || token == ";") {
+					logger::warn("Line {}, Col {}: Expected Value '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					return false;
+				}
+
+				unsigned long parsedValue;
+				auto parsingResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+				if (parsingResult.ec != std::errc()) {
+					logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					return false;
+				}
+
+				if (parsedValue > 0xFFFF) {
+					logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					return false;
+				}
+
+				a_configData.AssignValue = std::any(static_cast<std::uint16_t>(parsedValue));
+			}
+			else {
+				logger::warn("Line {}, Col {}: Invalid Assignment '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element));
+				return false;
+			}
+
+			return true;
+		}
+
 		bool ParseOperation(ConfigData& a_configData) {
-			OperationType opType;
+			ConfigData::Operation newOp;
 
 			auto token = reader.GetToken();
 			if (token == "Clear")
-				opType = OperationType::kClear;
+				newOp.OpType = OperationType::kClear;
 			else if (token == "Add")
-				opType = OperationType::kAdd;
+				newOp.OpType = OperationType::kAdd;
 			else if (token == "Delete")
-				opType = OperationType::kDelete;
+				newOp.OpType = OperationType::kDelete;
 			else {
 				logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
 			}
 
-			if (opType == OperationType::kClear || opType == OperationType::kAdd || opType == OperationType::kDelete) {
-				if (a_configData.Element != ElementType::kCategories) {
-					logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.", 
-						reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(opType));
+			switch (a_configData.Element) {
+			case ElementType::kCategories:
+				switch (newOp.OpType) {
+				case OperationType::kClear:
+				case OperationType::kAdd:
+				case OperationType::kDelete:
+					break;
+
+				default:
+					logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.",
+						reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
 					return false;
 				}
+				break;
+
+			case ElementType::kComponents:
+				switch (newOp.OpType) {
+				case OperationType::kClear:
+				case OperationType::kAdd:
+				case OperationType::kDelete:
+					break;
+
+				default:
+					logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.",
+						reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
+					return false;
+				}
+				break;
 			}
 
 			token = reader.GetToken();
@@ -222,11 +377,60 @@ namespace CObjs {
 				return false;
 			}
 
-			std::optional<std::string> opData;
-			if (opType != OperationType::kClear) {
-				opData = ParseForm();
-				if (!opData.has_value())
-					return false;
+			switch (a_configData.Element) {
+			case ElementType::kCategories:
+				if (newOp.OpType != OperationType::kClear) {
+					std::optional<std::string> form = ParseForm();
+					if (!form.has_value())
+						return false;
+
+					newOp.OpData = std::any(form.value());
+				}
+
+				break;
+
+			case ElementType::kComponents: {
+				std::optional<ConfigData::Operation::ComponentData> opData;
+
+				if (newOp.OpType != OperationType::kClear) {
+					opData = ConfigData::Operation::ComponentData{};
+
+					if (newOp.OpType == OperationType::kAdd || newOp.OpType == OperationType::kDelete) {
+						std::optional<std::string> form = ParseForm();
+						if (!form.has_value())
+							return false;
+
+						opData->Form = form.value();
+
+						if (newOp.OpType == OperationType::kAdd) {
+							token = reader.GetToken();
+							if (token != ",") {
+								logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
+								return false;
+							}
+
+							token = reader.GetToken();
+							if (token.empty()) {
+								logger::warn("Line {}, Col {}: Expected Count '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+								return false;
+							}
+
+							unsigned long parsedValue;
+							auto parsingResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+							if (parsingResult.ec != std::errc()) {
+								logger::warn("Line {}, Col {}: Failed to parse count '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+								return false;
+							}
+
+							opData->Count = static_cast<std::uint32_t>(parsedValue);
+						}
+					}
+
+					newOp.OpData = std::any(opData.value());
+				}
+
+				break;
+			}
 			}
 
 			token = reader.GetToken();
@@ -235,7 +439,7 @@ namespace CObjs {
 				return false;
 			}
 
-			a_configData.Operations.push_back({ opType, opData });
+			a_configData.Operations.push_back(newOp);
 
 			return true;
 		}
@@ -278,6 +482,83 @@ namespace CObjs {
 		}
 	}
 
+	void PreparePatchData(const ConfigData& a_configData, PatchData& a_patchData) {
+		if (a_configData.Element == ElementType::kCategories) {
+			if (!a_patchData.Categories.has_value())
+				a_patchData.Categories = PatchData::CategoriesData{};
+
+			for (const auto& op : a_configData.Operations) {
+				if (op.OpType == OperationType::kClear) {
+					a_patchData.Categories->Clear = true;
+				}
+				else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kDelete) {
+					std::string opForm = std::any_cast<std::string>(op.OpData.value());
+
+					RE::TESForm* keywordForm = Utils::GetFormFromString(opForm);
+					if (!keywordForm) {
+						logger::warn("Invalid KeywordForm: '{}'.", opForm);
+						continue;
+					}
+
+					RE::BGSKeyword* keyword = keywordForm->As<RE::BGSKeyword>();
+					if (!keyword) {
+						logger::warn("'{}' is not a Keyword.", opForm);
+						continue;
+					}
+
+					auto keywordIndexMap_iter = g_keywordIndexMap.find(keyword);
+					if (keywordIndexMap_iter == g_keywordIndexMap.end()) {
+						logger::warn("'{}' is not a recipe filter keyword.", opForm);
+						continue;
+					}
+
+					if (op.OpType == OperationType::kAdd)
+						a_patchData.Categories->AddKeywordSet.insert(keyword);
+					else
+						a_patchData.Categories->DeleteKeywordSet.insert(keyword);
+				}
+			}
+		}
+		else if (a_configData.Element == ElementType::kComponents) {
+			if (!a_patchData.Components.has_value())
+				a_patchData.Components = PatchData::ComponentsData{};
+
+			for (const auto& op : a_configData.Operations) {
+				if (op.OpType == OperationType::kClear) {
+					a_patchData.Components->Clear = true;
+				}
+				else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kDelete) {
+					ConfigData::Operation::ComponentData componentData = std::any_cast<ConfigData::Operation::ComponentData>(op.OpData.value());
+
+					RE::TESForm* form = Utils::GetFormFromString(componentData.Form);
+					if (!form) {
+						logger::warn("Invalid Form: '{}'.", componentData.Form);
+						continue;
+					}
+
+					if (op.OpType == OperationType::kAdd)
+						a_patchData.Components->AddComponentVec.push_back({ form, componentData.Count });
+					else
+						a_patchData.Components->DeleteComponentVec.push_back(form);
+				}
+			}
+		}
+		else if (a_configData.Element == ElementType::kCreatedObject) {
+			std::string formStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+
+			RE::TESForm* form = Utils::GetFormFromString(formStr);
+			if (!form) {
+				logger::warn("Invalid Form: '{}'.", formStr);
+				return;
+			}
+
+			a_patchData.CreatedObject = form;
+		}
+		else if (a_configData.Element == ElementType::kCreatedObjectCount) {
+			a_patchData.CreatedObjectCount = std::any_cast<std::uint16_t>(a_configData.AssignValue.value());
+		}
+	}
+
 	void PrepareFilterByFormID(const ConfigData& a_configData) {
 		RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
 		if (!filterForm) {
@@ -291,128 +572,31 @@ namespace CObjs {
 			return;
 		}
 
-		PatchData& patchData = g_patchMap[cobjForm];
-
-		if (!patchData.FilterByFormID.has_value())
-			patchData.FilterByFormID = PatchData::Data{};
-
-		if (a_configData.Element == ElementType::kCategories) {
-			if (!patchData.FilterByFormID->Categories.has_value())
-				patchData.FilterByFormID->Categories = PatchData::Data::CategoriesData{};
-
-			for (const auto& op : a_configData.Operations) {
-				if (op.OpType == OperationType::kClear) {
-					patchData.FilterByFormID->Categories->Clear = true;
-				}
-				else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kDelete) {
-					RE::TESForm* keywordForm = Utils::GetFormFromString(op.OpForm.value());
-					if (!keywordForm) {
-						logger::warn("Invalid KeywordForm: '{}'.", op.OpForm.value());
-						continue;
-					}
-
-					RE::BGSKeyword* keyword = keywordForm->As<RE::BGSKeyword>();
-					if (!keyword) {
-						logger::warn("'{}' is not a Keyword.", op.OpForm.value());
-						continue;
-					}
-
-					auto keywordIndexMap_iter = g_keywordIndexMap.find(keyword);
-					if (keywordIndexMap_iter == g_keywordIndexMap.end()) {
-						logger::warn("'{}' is not a recipe filter keyword.", op.OpForm.value());
-						continue;
-					}
-
-					if (op.OpType == OperationType::kAdd)
-						patchData.FilterByFormID->Categories->AddKeywordSet.insert(keyword);
-					else
-						patchData.FilterByFormID->Categories->DeleteKeywordSet.insert(keyword);
-				}
-			}
-		}
+		PatchData& patchData = g_filterByFormIDPatchMap[cobjForm];
+		PreparePatchData(a_configData, patchData);
 	}
 
 	void PrepareFilterByCategoryKeyword(const ConfigData& a_configData) {
-		if (a_configData.Element == ElementType::kCategories) {
-			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
-			if (!filterForm) {
-				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
-				return;
-			}
-
-			RE::BGSKeyword* keywordFilterForm = filterForm->As<RE::BGSKeyword>();
-			if (!keywordFilterForm) {
-				logger::warn("'{}' is not a Keyword.", a_configData.FilterForm);
-				return;
-			}
-
-			auto keywordIndexMap_iter = g_keywordIndexMap.find(keywordFilterForm);
-			if (keywordIndexMap_iter == g_keywordIndexMap.end()) {
-				logger::warn("'{}' is not a recipe filter keyword.", a_configData.FilterForm);
-				return;
-			}
-
-			g_cobjFilterMap[keywordIndexMap_iter->second] = a_configData.Operations;
-		}
-	}
-
-	void PrepareByCObjFilterMap() {
-		RE::TESDataHandler* dataHandler = RE::TESDataHandler::GetSingleton();
-		if (!dataHandler || g_cobjFilterMap.empty())
+		RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+		if (!filterForm) {
+			logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
 			return;
-
-		for (RE::TESForm* form : dataHandler->formArrays[RE::stl::to_underlying(RE::ENUM_FORM_ID::kCOBJ)]) {
-			RE::BGSConstructibleObject* cobjForm = form->As<RE::BGSConstructibleObject>();
-			if (!cobjForm || cobjForm->filterKeywords.size == 0 || !cobjForm->filterKeywords.array)
-				continue;
-
-			for (std::uint32_t ii = 0; ii < cobjForm->filterKeywords.size; ii++) {
-				if (cobjForm->filterKeywords.array[ii].keywordIndex == 0xFFFF)
-					continue;
-
-				auto cobjFilterMap_iter = g_cobjFilterMap.find(cobjForm->filterKeywords.array[ii].keywordIndex);
-				if (cobjFilterMap_iter == g_cobjFilterMap.end())
-					continue;
-
-				PatchData& patchData = g_patchMap[cobjForm];
-
-				if (!patchData.FilterByCategoryKeyword.has_value())
-					patchData.FilterByCategoryKeyword = PatchData::Data{};
-
-				if (!patchData.FilterByCategoryKeyword->Categories.has_value())
-					patchData.FilterByCategoryKeyword->Categories = PatchData::Data::CategoriesData{};
-
-				for (const auto& op : cobjFilterMap_iter->second) {
-					if (op.OpType == OperationType::kClear) {
-						patchData.FilterByCategoryKeyword->Categories->Clear = true;
-					}
-					else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kDelete) {
-						RE::TESForm* keywordForm = Utils::GetFormFromString(op.OpForm.value());
-						if (!keywordForm) {
-							logger::warn("Invalid KeywordForm: '{}'.", op.OpForm.value());
-							continue;
-						}
-
-						RE::BGSKeyword* keyword = keywordForm->As<RE::BGSKeyword>();
-						if (!keyword) {
-							logger::warn("'{}' is not a Keyword.", op.OpForm.value());
-							continue;
-						}
-
-						auto keywordIndexMap_iter = g_keywordIndexMap.find(keyword);
-						if (keywordIndexMap_iter == g_keywordIndexMap.end()) {
-							logger::warn("'{}' is not a recipe filter keyword.", op.OpForm.value());
-							continue;
-						}
-
-						if (op.OpType == OperationType::kAdd)
-							patchData.FilterByCategoryKeyword->Categories->AddKeywordSet.insert(keyword);
-						else
-							patchData.FilterByCategoryKeyword->Categories->DeleteKeywordSet.insert(keyword);
-					}
-				}
-			}
 		}
+
+		RE::BGSKeyword* keywordFilterForm = filterForm->As<RE::BGSKeyword>();
+		if (!keywordFilterForm) {
+			logger::warn("'{}' is not a Keyword.", a_configData.FilterForm);
+			return;
+		}
+
+		auto keywordIndexMap_iter = g_keywordIndexMap.find(keywordFilterForm);
+		if (keywordIndexMap_iter == g_keywordIndexMap.end()) {
+			logger::warn("'{}' is not a recipe filter keyword.", a_configData.FilterForm);
+			return;
+		}
+
+		PatchData& patchData = g_filterByCategoryKeywordPatchMap[keywordIndexMap_iter->second];
+		PreparePatchData(a_configData, patchData);
 	}
 
 	void Prepare(const ConfigData& a_configData) {
@@ -484,7 +668,7 @@ namespace CObjs {
 		a_cobjForm->filterKeywords.size = ii;
 	}
 
-	void PatchCategories(RE::BGSConstructibleObject* a_cobjForm, const PatchData::Data::CategoriesData& a_categoriesData) {
+	void PatchCategories(RE::BGSConstructibleObject* a_cobjForm, const PatchData::CategoriesData& a_categoriesData) {
 		bool isCleared = false, isDeleted = false, isAdded = false;
 
 		std::unordered_set<std::uint16_t> categoryKeywordIndexSet;
@@ -531,17 +715,108 @@ namespace CObjs {
 			SetCategoryKeywords(a_cobjForm, categoryKeywordIndexSet);
 	}
 
+	RE::BSTArray<RE::BSTTuple<RE::TESForm*, RE::BGSTypedFormValuePair::SharedVal>>* AllocateComponents() {
+		RE::MemoryManager& memoryManager = RE::MemoryManager::GetSingleton();
+		void *result = memoryManager.Allocate(sizeof(RE::BSTArray<RE::BSTTuple<RE::TESForm*, RE::BGSTypedFormValuePair::SharedVal>>), 0, false);
+		if (!result) {
+			logger::critical("Failed to allocate the new Components array.");
+			return nullptr;
+		}
+
+		memset(result, 0, sizeof(RE::BSTArray<RE::BSTTuple<RE::TESForm*, RE::BGSTypedFormValuePair::SharedVal>>));
+
+		return (RE::BSTArray<RE::BSTTuple<RE::TESForm*, RE::BGSTypedFormValuePair::SharedVal>>*)result;
+	}
+
+	void PatchComponents(RE::BGSConstructibleObject* a_cobjForm, const PatchData::ComponentsData& a_componentsData) {
+		bool isCleared = false;
+
+		// Clear
+		if (a_componentsData.Clear) {
+			a_cobjForm->requiredItems->clear();
+			isCleared = true;
+		}
+
+		// Delete
+		if (!isCleared && a_cobjForm->requiredItems) {
+			for (const auto& delForm : a_componentsData.DeleteComponentVec) {
+				for (auto it = a_cobjForm->requiredItems->begin(); it != a_cobjForm->requiredItems->end(); it++) {
+					if (it->first != delForm)
+						continue;
+
+					a_cobjForm->requiredItems->erase(it);
+					break;
+				}
+			}
+		}
+
+		if (!a_componentsData.AddComponentVec.empty() && !a_cobjForm->requiredItems)
+			a_cobjForm->requiredItems = AllocateComponents();
+
+		// Add
+		if (a_cobjForm->requiredItems) {
+			for (const auto& addComponent : a_componentsData.AddComponentVec) {
+				bool found = false;
+
+				for (auto it = a_cobjForm->requiredItems->begin(); it != a_cobjForm->requiredItems->end(); it++) {
+					if (it->first != addComponent.Form)
+						continue;
+
+					found = true;
+					it->second.i = addComponent.Count;
+
+					break;
+				}
+
+				if (!found)
+					a_cobjForm->requiredItems->push_back(RE::BSTTuple<RE::TESForm*, RE::BGSTypedFormValuePair::SharedVal>(addComponent.Form, addComponent.Count));
+			}
+		}
+	}
+
 	void Patch(RE::BGSConstructibleObject* a_cobjForm, const PatchData& a_patchData) {
-		const PatchData::Data* filterData = nullptr;
-		if (a_patchData.FilterByFormID.has_value())
-			filterData = &a_patchData.FilterByFormID.value();
-		else if (a_patchData.FilterByCategoryKeyword.has_value())
-			filterData = &a_patchData.FilterByCategoryKeyword.value();
-		else
+		if (a_patchData.Categories.has_value())
+			PatchCategories(a_cobjForm, a_patchData.Categories.value());
+		if (a_patchData.Components.has_value())
+			PatchComponents(a_cobjForm, a_patchData.Components.value());
+		if (a_patchData.CreatedObject.has_value())
+			a_cobjForm->createdItem = a_patchData.CreatedObject.value();
+		if (a_patchData.CreatedObjectCount.has_value())
+			a_cobjForm->data.numConstructed = a_patchData.CreatedObjectCount.value();
+	}
+
+	void PatchByFilters() {
+		RE::TESDataHandler* dataHandler = RE::TESDataHandler::GetSingleton();
+		if (!dataHandler)
 			return;
 
-		if (filterData->Categories.has_value())
-			PatchCategories(a_cobjForm, filterData->Categories.value());
+		if (g_filterByFormIDPatchMap.empty() && g_filterByCategoryKeywordPatchMap.empty())
+			return;
+
+		for (RE::TESForm* form : dataHandler->formArrays[RE::stl::to_underlying(RE::ENUM_FORM_ID::kCOBJ)]) {
+			RE::BGSConstructibleObject* cobjForm = form->As<RE::BGSConstructibleObject>();
+			if (!cobjForm)
+				continue;
+
+			if (!g_filterByFormIDPatchMap.empty()) {
+				auto filterByFormID_iter = g_filterByFormIDPatchMap.find(cobjForm);
+				if (filterByFormID_iter != g_filterByFormIDPatchMap.end())
+					Patch(cobjForm, filterByFormID_iter->second);
+			}
+
+			if (!g_filterByCategoryKeywordPatchMap.empty()) {
+				if (cobjForm->filterKeywords.size && cobjForm->filterKeywords.array) {
+					for (std::uint32_t ii = 0; ii < cobjForm->filterKeywords.size; ii++) {
+						if (cobjForm->filterKeywords.array[ii].keywordIndex == 0xFFFF)
+							continue;
+
+						auto filterByCategoryKeyword_iter = g_filterByCategoryKeywordPatchMap.find(cobjForm->filterKeywords.array[ii].keywordIndex);
+						if (filterByCategoryKeyword_iter != g_filterByCategoryKeywordPatchMap.end())
+							Patch(cobjForm, filterByCategoryKeyword_iter->second);
+					}
+				}
+			}
+		}
 	}
 
 	void Patch() {
@@ -549,22 +824,20 @@ namespace CObjs {
 
 		SetKeywordIndexMap();
 		Prepare(g_configVec);
-		PrepareByCObjFilterMap();
 
 		logger::info("======================== Finished preparing patch for ConstructibleObject ========================");
 		logger::info("");
 
 		logger::info("======================== Start patching for ConstructibleObject ========================");
 
-		for (const auto& patchData : g_patchMap)
-			Patch(patchData.first, patchData.second);
+		PatchByFilters();
 
 		logger::info("======================== Finished patching for ConstructibleObject ========================");
 		logger::info("");
 
 		g_configVec.clear();
-		g_patchMap.clear();
 		g_keywordIndexMap.clear();
-		g_cobjFilterMap.clear();
+		g_filterByFormIDPatchMap.clear();
+		g_filterByCategoryKeywordPatchMap.clear();
 	}
 }

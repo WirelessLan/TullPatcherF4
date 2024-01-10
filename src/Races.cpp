@@ -476,8 +476,6 @@ namespace Races {
 			a_config.Operations.push_back(newOp);
 
 			return true;
-
-			return false;
 		}
 
 		std::optional<float> ParseNumber() {
