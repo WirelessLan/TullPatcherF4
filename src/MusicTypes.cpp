@@ -452,7 +452,9 @@ namespace MusicTypes {
 				return std::nullopt;
 			}
 
-			if (token == "PlaysOneSelection")
+			if (token == "None")
+				return 0x0000;
+			else if (token == "PlaysOneSelection")
 				return 0x0001;
 			else if (token == "AbruptTransition")
 				return 0x0002;
@@ -488,7 +490,7 @@ namespace MusicTypes {
 				retStr += "DoesNotQueue" + separtor;
 
 			if (retStr.empty())
-				return "NONE";
+				return "None";
 
 			return retStr.substr(0, retStr.size() - separtor.size());
 		}
