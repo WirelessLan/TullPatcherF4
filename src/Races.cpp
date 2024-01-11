@@ -481,33 +481,36 @@ namespace Races {
 		std::optional<float> ParseNumber() {
 			auto token = reader.GetToken();
 			if (token.empty() || token == ")") {
-				logger::warn("Line {}, Col {}: Expected number '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				logger::warn("Line {}, Col {}: Expected value '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return std::nullopt;
 			}
 
-			std::string magStr = std::string(token);
+			std::string numStr = std::string(token);
 			if (reader.Peek() == ".") {
-				magStr += reader.GetToken();
+				numStr += reader.GetToken();
 
 				token = reader.GetToken();
 				if (token.empty() || token == ")") {
-					logger::warn("Line {}, Col {}: Expected number's decimal '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					logger::warn("Line {}, Col {}: Expected decimal value '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 					return std::nullopt;
 				}
 
-				magStr += std::string(token);
+				numStr += std::string(token);
 			}
 
-			float fParsedValue;
-			try {
-				fParsedValue = std::stof(magStr);
-			}
-			catch (...) {
-				logger::warn("Line {}, Col {}: Failed to parse number '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+			if (!Utils::IsValidDecimalNumber(numStr)) {
+				logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), numStr);
 				return std::nullopt;
 			}
 
-			return fParsedValue;
+			float parsedValue;
+			auto parsingResult = std::from_chars(numStr.data(), numStr.data() + numStr.size(), parsedValue);
+			if (parsingResult.ec != std::errc()) {
+				logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), numStr);
+				return std::nullopt;
+			}
+
+			return parsedValue;
 		}
 
 		std::optional<std::uint32_t> ParseBipedSlot() {
@@ -515,7 +518,7 @@ namespace Races {
 
 			auto token = reader.GetToken();
 			if (token.empty() || token == "|" || token == ";") {
-				logger::warn("Line {}, Col {}: Expected BipedSlot '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				logger::warn("Line {}, Col {}: Expected bipedslot '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return std::nullopt;
 			}
 

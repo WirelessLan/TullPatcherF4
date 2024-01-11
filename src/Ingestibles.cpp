@@ -259,7 +259,7 @@ namespace Ingestibles {
 
 					token = reader.GetToken();
 					if (token.empty() || token == ",") {
-						logger::warn("Line {}, Col {}: Expected Magnitude '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+						logger::warn("Line {}, Col {}: Expected magnitude '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 						return false;
 					}
 
@@ -269,19 +269,22 @@ namespace Ingestibles {
 
 						token = reader.GetToken();
 						if (token.empty() || token == ",") {
-							logger::warn("Line {}, Col {}: Expected Magnitude's decimal '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+							logger::warn("Line {}, Col {}: Expected magnitude's decimal value '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 							return false;
 						}
 
 						magStr += std::string(token);
 					}
 
-					float fParsedValue;
-					try {
-						fParsedValue = std::stof(magStr);
+					if (!Utils::IsValidDecimalNumber(magStr)) {
+						logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), magStr);
+						return false;
 					}
-					catch (...) {
-						logger::warn("Line {}, Col {}: Failed to parse magnitude '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+
+					float fParsedValue;
+					auto parsingResult = std::from_chars(magStr.data(), magStr.data() + magStr.size(), fParsedValue);
+					if (parsingResult.ec != std::errc()) {
+						logger::warn("Line {}, Col {}: Failed to parse magnitude '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), magStr);
 						return false;
 					}
 
@@ -295,12 +298,12 @@ namespace Ingestibles {
 
 					token = reader.GetToken();
 					if (token.empty() || token == ",") {
-						logger::warn("Line {}, Col {}: Expected Area '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+						logger::warn("Line {}, Col {}: Expected area '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 						return false;
 					}
 
 					unsigned long uParsedValue;
-					auto parsingResult = std::from_chars(token.data(), token.data() + token.size(), uParsedValue);
+					parsingResult = std::from_chars(token.data(), token.data() + token.size(), uParsedValue);
 					if (parsingResult.ec != std::errc()) {
 						logger::warn("Line {}, Col {}: Failed to parse area '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 						return false;
@@ -316,7 +319,7 @@ namespace Ingestibles {
 
 					token = reader.GetToken();
 					if (token.empty() || token == ")") {
-						logger::warn("Line {}, Col {}: Expected Duration '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+						logger::warn("Line {}, Col {}: Expected duration '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 						return false;
 					}
 

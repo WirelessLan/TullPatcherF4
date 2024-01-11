@@ -20,6 +20,15 @@ namespace Utils {
 		return a_str.substr(sIdx, eIdx - sIdx);
 	}
 
+	bool IsValidDecimalNumber(const std::string& str) {
+		std::stringstream s(str);
+		float f;
+		s >> std::noskipws >> f;
+
+		char remaining;
+		return s.eof() || (s >> remaining && std::isspace(remaining));
+	}
+
 	std::uint32_t ParseFormID(std::string_view a_formIdStr) {
 		std::uint32_t retID = 0;
 		try {

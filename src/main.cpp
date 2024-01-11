@@ -7,6 +7,7 @@
 #include "Keywords.h"
 #include "LeveledLists.h"
 #include "Locations.h"
+#include "MusicTypes.h"
 #include "Outfits.h"
 #include "Quests.h"
 #include "Races.h"
@@ -25,6 +26,7 @@ void Patch() {
 	Keywords::Patch();
 	LeveledLists::Patch();
 	Locations::Patch();
+	MusicTypes::Patch();
 	Outfits::Patch();
 	Quests::Patch();
 	Races::Patch();
@@ -104,6 +106,7 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface * a_
 	Keywords::ReadConfigs();
 	LeveledLists::ReadConfigs();
 	Locations::ReadConfigs();
+	MusicTypes::ReadConfigs();
 	Outfits::ReadConfigs();
 	Quests::ReadConfigs();
 	Races::ReadConfigs();

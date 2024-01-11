@@ -17,6 +17,8 @@ set(SOURCES
 	src/LeveledLists.cpp
 	src/Locations.h
 	src/Locations.cpp
+	src/MusicTypes.h
+	src/MusicTypes.cpp
 	src/Outfits.h
 	src/Outfits.cpp
 	src/Quests.h
