@@ -19,6 +19,8 @@ set(SOURCES
 	src/Locations.cpp
 	src/MusicTypes.h
 	src/MusicTypes.cpp
+	src/NPCs.h
+	src/NPCs.cpp
 	src/Outfits.h
 	src/Outfits.cpp
 	src/Quests.h

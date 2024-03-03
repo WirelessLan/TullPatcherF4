@@ -29,12 +29,17 @@ namespace Utils {
 		return s.eof() || (s >> remaining && std::isspace(remaining));
 	}
 
-	std::uint32_t ParseFormID(std::string_view a_formIdStr) {
+	std::uint32_t ParseHex(std::string_view a_hexStr) {
 		std::uint32_t retID = 0;
 		try {
-			retID = std::stoul(std::string(a_formIdStr), nullptr, 16) & 0xFFFFFF;
+			retID = std::stoul(std::string(a_hexStr), nullptr, 16);
 		}
 		catch (...) {}
+		return retID;
+	}
+
+	std::uint32_t ParseFormID(std::string_view a_formIdStr) {
+		std::uint32_t retID = ParseHex(a_formIdStr) & 0xFFFFFF;
 		return retID;
 	}
 

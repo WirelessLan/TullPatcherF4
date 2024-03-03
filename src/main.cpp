@@ -8,6 +8,7 @@
 #include "LeveledLists.h"
 #include "Locations.h"
 #include "MusicTypes.h"
+#include "NPCs.h"
 #include "Outfits.h"
 #include "Quests.h"
 #include "Races.h"
@@ -107,6 +108,7 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface * a_
 	LeveledLists::ReadConfigs();
 	Locations::ReadConfigs();
 	MusicTypes::ReadConfigs();
+	NPCs::ReadConfigs();
 	Outfits::ReadConfigs();
 	Quests::ReadConfigs();
 	Races::ReadConfigs();
@@ -117,6 +119,8 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface * a_
 	std::chrono::duration<double> readConfigDuration = readConfigEnd - readConfigStart;
 
 	logger::info("ReadConfig execution time: {} seconds", readConfigDuration.count());
+
+	NPCs::Install();
 
 	const F4SE::MessagingInterface* message = F4SE::GetMessagingInterface();
 	if (message)
