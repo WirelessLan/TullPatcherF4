@@ -20,6 +20,7 @@ namespace NPCs {
 	}
 
 	enum class ElementType {
+		kClass,
 		kHairColor,
 		kHeadParts,
 		kHeadTexture,
@@ -37,6 +38,7 @@ namespace NPCs {
 
 	std::string_view ElementTypeToString(ElementType a_value) {
 		switch (a_value) {
+		case ElementType::kClass: return "Class";
 		case ElementType::kHairColor: return "HairColor";
 		case ElementType::kHeadParts: return "HeadParts";
 		case ElementType::kHeadTexture: return "HeadTexture";
@@ -57,7 +59,6 @@ namespace NPCs {
 	enum class OperationType {
 		kClear,
 		kAdd,
-		kAddIfNotExists,
 		kSet,
 		kDelete
 	};
@@ -66,7 +67,6 @@ namespace NPCs {
 		switch (a_value) {
 		case OperationType::kClear: return "Clear";
 		case OperationType::kAdd: return "Add";
-		case OperationType::kAddIfNotExists: return "AddIfNotExists";
 		case OperationType::kSet: return "Set";
 		case OperationType::kDelete: return "Delete";
 		default: return std::string_view{};
@@ -101,7 +101,6 @@ namespace NPCs {
 		struct HeadPartsData {
 			bool Clear;
 			std::vector<RE::BGSHeadPart*> AddPartVec;
-			std::unordered_set<RE::BGSHeadPart*> AddUniquePartSet;
 			std::vector<RE::BGSHeadPart*> DeletePartVec;
 		};
 
@@ -116,7 +115,8 @@ namespace NPCs {
 			std::unordered_map<std::uint16_t, std::pair<std::uint32_t, float>> SetTintMap;
 			std::vector<std::uint16_t> DeleteTintVec;
 		};
-
+		
+		std::optional<RE::TESClass*> Class;
 		std::optional<RE::BGSColorForm*> HairColor;
 		std::optional<HeadPartsData> HeadParts;
 		std::optional<RE::BGSTextureSet*> HeadTexture;
@@ -216,7 +216,6 @@ namespace NPCs {
 						break;
 
 					case OperationType::kAdd:
-					case OperationType::kAddIfNotExists:
 					case OperationType::kDelete:
 						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType),
 							std::any_cast<std::string>(a_configData.Operations[ii].OpData.value()));
@@ -300,6 +299,7 @@ namespace NPCs {
 					ElementTypeToString(a_configData.Element), std::any_cast<float>(a_configData.AssignValue.value()));
 				break;
 
+			case ElementType::kClass:
 			case ElementType::kHairColor:
 			case ElementType::kHeadTexture:
 			case ElementType::kRace:
@@ -347,7 +347,9 @@ namespace NPCs {
 
 		bool ParseElement(ConfigData& a_config) {
 			auto token = reader.GetToken();
-			if (token == "HairColor")
+			if (token == "Class")
+				a_config.Element = ElementType::kClass;
+			else if (token == "HairColor")
 				a_config.Element = ElementType::kHairColor;
 			else if (token == "HeadParts")
 				a_config.Element = ElementType::kHeadParts;
@@ -388,7 +390,8 @@ namespace NPCs {
 				return false;
 			}
 
-			if (a_config.Element == ElementType::kHairColor || a_config.Element == ElementType::kHeadTexture || a_config.Element == ElementType::kRace) {
+			if (a_config.Element == ElementType::kClass || a_config.Element == ElementType::kHairColor 
+				|| a_config.Element == ElementType::kHeadTexture || a_config.Element == ElementType::kRace) {
 				auto raceForm = ParseForm();
 				if (!raceForm.has_value())
 					return false;
@@ -451,8 +454,6 @@ namespace NPCs {
 				newOp.OpType = OperationType::kClear;
 			else if (token == "Add")
 				newOp.OpType = OperationType::kAdd;
-			else if (token == "AddIfNotExists")
-				newOp.OpType = OperationType::kAddIfNotExists;
 			else if (token == "Set")
 				newOp.OpType = OperationType::kSet;
 			else if (token == "Delete")
@@ -464,7 +465,7 @@ namespace NPCs {
 
 			switch (a_config.Element) {
 			case ElementType::kHeadParts:
-				if (newOp.OpType != OperationType::kClear && newOp.OpType != OperationType::kAdd && newOp.OpType != OperationType::kAddIfNotExists && newOp.OpType != OperationType::kDelete) {
+				if (newOp.OpType != OperationType::kClear && newOp.OpType != OperationType::kAdd && newOp.OpType != OperationType::kDelete) {
 					logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.",
 						reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element), OperationTypeToString(newOp.OpType));
 					return false;
@@ -754,7 +755,25 @@ namespace NPCs {
 				return;
 			}
 
-			if (a_configData.Element == ElementType::kHairColor) {
+			if (a_configData.Element == ElementType::kClass) {
+				if (a_configData.AssignValue.has_value()) {
+					std::string classFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+					RE::TESForm* classForm = Utils::GetFormFromString(classFormStr);
+					if (!classForm) {
+						logger::warn("Invalid Form: '{}'.", classFormStr);
+						return;
+					}
+
+					RE::TESClass* _class = classForm->As<RE::TESClass>();
+					if (!_class) {
+						logger::warn("'{}' is not a Class.", classFormStr);
+						return;
+					}
+
+					g_patchMap[npc].Class = _class;
+				}
+			}
+			else if (a_configData.Element == ElementType::kHairColor) {
 				if (a_configData.AssignValue.has_value()) {
 					std::string colorFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
 					RE::TESForm* colorForm = Utils::GetFormFromString(colorFormStr);
@@ -782,7 +801,7 @@ namespace NPCs {
 					if (op.OpType == OperationType::kClear) {
 						patchData.HeadParts->Clear = true;
 					}
-					else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kAddIfNotExists || op.OpType == OperationType::kDelete) {
+					else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kDelete) {
 						std::string opFormStr = std::any_cast<std::string>(op.OpData.value());
 
 						RE::TESForm* opForm = Utils::GetFormFromString(opFormStr);
@@ -799,8 +818,6 @@ namespace NPCs {
 
 						if (op.OpType == OperationType::kAdd)
 							patchData.HeadParts->AddPartVec.push_back(headPart);
-						else if (op.OpType == OperationType::kAddIfNotExists)
-							patchData.HeadParts->AddUniquePartSet.insert(headPart);
 						else
 							patchData.HeadParts->DeletePartVec.push_back(headPart);
 					}
@@ -959,98 +976,45 @@ namespace NPCs {
 		logger::info("");
 	}
 
-	std::vector<RE::BGSHeadPart*> GetHeadParts(RE::BGSHeadPart** a_headParts, std::int8_t a_numHeadParts) {
-		std::vector<RE::BGSHeadPart*> retVec;
-
-		if (!a_headParts || a_numHeadParts <= 0)
-			return retVec;
-
-		for (int ii = 0; ii < a_numHeadParts; ii++)
-			retVec.push_back(a_headParts[ii]);
-
-		return retVec;
+	void AddHeadPart(RE::TESNPC* a_npc, RE::BGSHeadPart* a_hdpt) {
+		using func_t = void(*)(RE::TESNPC*, RE::BGSHeadPart*, std::uint32_t, std::uint32_t);
+		const REL::Relocation<func_t> func{ REL::ID(735660) };
+		func(a_npc, a_hdpt, 1, false);
 	}
 
-	void SetHeadParts(RE::TESNPC* a_npc, const std::vector<RE::BGSHeadPart*>& a_headPartsVec) {
-		RE::MemoryManager mm = RE::MemoryManager::GetSingleton();
+	void RemoveHeadPart(RE::TESNPC* a_npc, RE::BGSHeadPart* a_hdpt) {
+		using func_t = void(*)(RE::TESNPC*, RE::BGSHeadPart*, bool);
+		const REL::Relocation<func_t> func{ REL::ID(880456) };
+		func(a_npc, a_hdpt, true);
+	}
 
+	void ClearHeadParts(RE::TESNPC* a_npc) {
 		if (a_npc->headParts) {
+			RE::MemoryManager& mm = RE::MemoryManager::GetSingleton();
 			mm.Deallocate(a_npc->headParts, false);
-
-			a_npc->headParts = nullptr;
-			a_npc->numHeadParts = 0;
 		}
-
-		if (a_headPartsVec.empty())
-			return;
-
-		std::size_t headPartsCnt = a_headPartsVec.size();
-		if (headPartsCnt > 0x7F) {
-			logger::critical("HeadParts size is bigger than 127. The size has been set to 127.");
-			headPartsCnt = 0x7F;
-		}
-
-		a_npc->headParts = (RE::BGSHeadPart**)mm.Allocate(sizeof(RE::BGSHeadPart*) * headPartsCnt, 0, false);
-		if (!a_npc->headParts) {
-			logger::critical("Failed to allocate the new HeadParts.");
-			a_npc->headParts = nullptr;
-			return;
-		}
-
-		for (std::size_t ii = 0; ii < headPartsCnt; ii++)
-			a_npc->headParts[ii] = a_headPartsVec[ii];
-
-		a_npc->numHeadParts = static_cast<std::int8_t>(headPartsCnt);
+		a_npc->headParts = nullptr;
+		a_npc->numHeadParts = 0;
 	}
 
 	void PatchHeadParts(RE::TESNPC* a_npc, const PatchData::HeadPartsData& a_headPartsData) {
-		bool isCleared = false, isModified = false;
-
-		std::vector<RE::BGSHeadPart*> headPartsVec;
+		bool isCleared = false;
 
 		// Clear
-		if (a_headPartsData.Clear)
+		if (a_headPartsData.Clear) {
+			ClearHeadParts(a_npc);
 			isCleared = true;
-		else
-			headPartsVec = GetHeadParts(a_npc->headParts, a_npc->numHeadParts);
+		}
 
 		// Delete
 		if (!isCleared) {
-			for (const auto& delPart : a_headPartsData.DeletePartVec) {
-				for (auto it = headPartsVec.begin(); it != headPartsVec.end(); it++) {
-					if (delPart != *it)
-						continue;
-
-					headPartsVec.erase(it);
-					isModified = true;
-					break;
-				}
-			}
+			for (const auto& delPart : a_headPartsData.DeletePartVec)
+				RemoveHeadPart(a_npc, delPart);
 		}
 
 		// Add
-		for (const auto& addPart : a_headPartsData.AddPartVec) {
-			headPartsVec.push_back(addPart);
-			isModified = true;
-		}
-
-		for (const auto& uniqPart : a_headPartsData.AddUniquePartSet) {
-			bool found = false;
-
-			for (const auto& part : headPartsVec) {
-				if (part != uniqPart)
-					continue;
-
-				found = true;
-				break;
-			}
-
-			if (!found)
-				headPartsVec.push_back(uniqPart);
-		}
-
-		if (isCleared || isModified)
-			SetHeadParts(a_npc, headPartsVec);
+		for (const auto& addPart : a_headPartsData.AddPartVec)
+			AddHeadPart(a_npc, addPart);
 	}
 
 	void SetMorphSliderValue(RE::TESNPC* a_npc, std::uint32_t a_morphKey, float a_morphValue) {
@@ -1150,6 +1114,9 @@ namespace NPCs {
 		}
 
 		static void Patch_PostFunc(RE::TESNPC* a_npc, const PatchData& a_patchData) {
+			if (a_patchData.Class.has_value())
+				a_npc->cl = a_patchData.Class.value();
+
 			if (a_patchData.HairColor.has_value())
 				if (a_npc->headRelatedData)
 					a_npc->headRelatedData->hairColor = a_patchData.HairColor.value();
