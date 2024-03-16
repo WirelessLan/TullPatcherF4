@@ -21,6 +21,9 @@ namespace NPCs {
 
 	enum class ElementType {
 		kClass,
+		kCombatStyle,
+		kDefaultOutfit,
+		kFullName,
 		kHairColor,
 		kHeadParts,
 		kHeadTexture,
@@ -39,6 +42,9 @@ namespace NPCs {
 	std::string_view ElementTypeToString(ElementType a_value) {
 		switch (a_value) {
 		case ElementType::kClass: return "Class";
+		case ElementType::kCombatStyle: return "CombatStyle";
+		case ElementType::kDefaultOutfit: return "DefaultOutfit";
+		case ElementType::kFullName: return "FullName";
 		case ElementType::kHairColor: return "HairColor";
 		case ElementType::kHeadParts: return "HeadParts";
 		case ElementType::kHeadTexture: return "HeadTexture";
@@ -117,6 +123,9 @@ namespace NPCs {
 		};
 		
 		std::optional<RE::TESClass*> Class;
+		std::optional<RE::TESCombatStyle*> CombatStyle;
+		std::optional<RE::BGSOutfit*> DefaultOutfit;
+		std::optional<std::string> FullName;
 		std::optional<RE::BGSColorForm*> HairColor;
 		std::optional<HeadPartsData> HeadParts;
 		std::optional<RE::BGSTextureSet*> HeadTexture;
@@ -300,6 +309,9 @@ namespace NPCs {
 				break;
 
 			case ElementType::kClass:
+			case ElementType::kCombatStyle:
+			case ElementType::kDefaultOutfit:
+			case ElementType::kFullName:
 			case ElementType::kHairColor:
 			case ElementType::kHeadTexture:
 			case ElementType::kRace:
@@ -349,6 +361,12 @@ namespace NPCs {
 			auto token = reader.GetToken();
 			if (token == "Class")
 				a_config.Element = ElementType::kClass;
+			else if (token == "CombatStyle")
+				a_config.Element = ElementType::kCombatStyle;
+			else if (token == "DefaultOutfit")
+				a_config.Element = ElementType::kDefaultOutfit;
+			else if (token == "FullName")
+				a_config.Element = ElementType::kFullName;
 			else if (token == "HairColor")
 				a_config.Element = ElementType::kHairColor;
 			else if (token == "HeadParts")
@@ -390,13 +408,34 @@ namespace NPCs {
 				return false;
 			}
 
-			if (a_config.Element == ElementType::kClass || a_config.Element == ElementType::kHairColor 
-				|| a_config.Element == ElementType::kHeadTexture || a_config.Element == ElementType::kRace) {
-				auto raceForm = ParseForm();
-				if (!raceForm.has_value())
-					return false;
+			if (a_config.Element == ElementType::kClass || a_config.Element == ElementType::kDefaultOutfit 
+				|| a_config.Element == ElementType::kHairColor || a_config.Element == ElementType::kHeadTexture || a_config.Element == ElementType::kSkin) {
+				token = reader.Peek();
+				if (token == "null") {
+					std::string nullStr(reader.GetToken());
 
-				a_config.AssignValue = std::any(raceForm.value());
+					a_config.AssignValue = std::any(nullStr);
+				}
+				else {
+					auto form = ParseForm();
+					if (!form.has_value())
+						return false;
+
+					a_config.AssignValue = std::any(form.value());
+				}
+			}
+			else if (a_config.Element == ElementType::kFullName) {
+				token = reader.GetToken();
+				if (!token.starts_with('\"')) {
+					logger::warn("Line {}, Col {}: {} must be a string.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
+					return false;
+				}
+				else if (!token.ends_with('\"')) {
+					logger::warn("Line {}, Col {}: String must end with '\"'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return false;
+				}
+
+				a_config.AssignValue = std::any(std::string(token.substr(1, token.length() - 2)));
 			}
 			else if (a_config.Element == ElementType::kHeightMax || a_config.Element == ElementType::kHeightMin
 				|| a_config.Element == ElementType::kWeightFat || a_config.Element == ElementType::kWeightMuscular || a_config.Element == ElementType::kWeightThin) {
@@ -405,6 +444,13 @@ namespace NPCs {
 					return false;
 
 				a_config.AssignValue = std::any(opValue.value());
+			}
+			else if (a_config.Element == ElementType::kCombatStyle || a_config.Element == ElementType::kRace) {
+				auto form = ParseForm();
+				if (!form.has_value())
+					return false;
+
+				a_config.AssignValue = std::any(form.value());
 			}
 			else if (a_config.Element == ElementType::kSex) {
 				token = reader.GetToken();
@@ -426,21 +472,6 @@ namespace NPCs {
 				}
 
 				a_config.AssignValue = std::any(static_cast<std::uint8_t>(parsedValue));
-			}
-			else if (a_config.Element == ElementType::kSkin) {
-				token = reader.Peek();
-				if (token == "null") {
-					std::string nullStr(reader.GetToken());
-
-					a_config.AssignValue = std::any(nullStr);
-				}
-				else {
-					auto armoForm = ParseForm();
-					if (!armoForm.has_value())
-						return false;
-
-					a_config.AssignValue = std::any(armoForm.value());
-				}
 			}
 
 			return true;
@@ -756,40 +787,84 @@ namespace NPCs {
 			}
 
 			if (a_configData.Element == ElementType::kClass) {
-				if (a_configData.AssignValue.has_value()) {
-					std::string classFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+				std::string classFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+				RE::TESClass* _class = nullptr;
+
+				if (classFormStr != "null") {
 					RE::TESForm* classForm = Utils::GetFormFromString(classFormStr);
 					if (!classForm) {
 						logger::warn("Invalid Form: '{}'.", classFormStr);
 						return;
 					}
 
-					RE::TESClass* _class = classForm->As<RE::TESClass>();
+					_class = classForm->As<RE::TESClass>();
 					if (!_class) {
 						logger::warn("'{}' is not a Class.", classFormStr);
 						return;
 					}
-
-					g_patchMap[npc].Class = _class;
 				}
+
+				g_patchMap[npc].Class = _class;
+			}
+			else if (a_configData.Element == ElementType::kCombatStyle) {
+				std::string comStyleFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+
+				RE::TESForm* comStyleForm = Utils::GetFormFromString(comStyleFormStr);
+				if (!comStyleForm) {
+					logger::warn("Invalid Form: '{}'.", comStyleFormStr);
+					return;
+				}
+
+				RE::TESCombatStyle* comStyle = comStyleForm->As<RE::TESCombatStyle>();
+				if (!comStyle) {
+					logger::warn("'{}' is not a CombatStyle.", comStyleFormStr);
+					return;
+				}
+
+				g_patchMap[npc].CombatStyle = comStyle;
+			}
+			else if (a_configData.Element == ElementType::kDefaultOutfit) {
+				std::string outfitFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+				RE::BGSOutfit* outfit = nullptr;
+
+				if (outfitFormStr != "null") {
+					RE::TESForm* outfitForm = Utils::GetFormFromString(outfitFormStr);
+					if (!outfitForm) {
+						logger::warn("Invalid Form: '{}'.", outfitFormStr);
+						return;
+					}
+
+					outfit = outfitForm->As<RE::BGSOutfit>();
+					if (!outfit) {
+						logger::warn("'{}' is not a Outfit.", outfitFormStr);
+						return;
+					}
+				}
+
+				g_patchMap[npc].DefaultOutfit = outfit;
+			}
+			else if (a_configData.Element == ElementType::kFullName) {
+				g_patchMap[npc].FullName = std::any_cast<std::string>(a_configData.AssignValue.value());
 			}
 			else if (a_configData.Element == ElementType::kHairColor) {
-				if (a_configData.AssignValue.has_value()) {
-					std::string colorFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+				std::string colorFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+				RE::BGSColorForm* color = nullptr;
+
+				if (colorFormStr != "null") {
 					RE::TESForm* colorForm = Utils::GetFormFromString(colorFormStr);
 					if (!colorForm) {
 						logger::warn("Invalid Form: '{}'.", colorFormStr);
 						return;
 					}
 
-					RE::BGSColorForm* color = colorForm->As<RE::BGSColorForm>();
+					color = colorForm->As<RE::BGSColorForm>();
 					if (!color) {
 						logger::warn("'{}' is not a Color.", colorFormStr);
 						return;
 					}
-
-					g_patchMap[npc].HairColor = color;
 				}
+
+				g_patchMap[npc].HairColor = color;
 			}
 			else if (a_configData.Element == ElementType::kHeadParts) {
 				PatchData& patchData = g_patchMap[npc];
@@ -824,32 +899,30 @@ namespace NPCs {
 				}
 			}
 			else if (a_configData.Element == ElementType::kHeadTexture) {
-				if (a_configData.AssignValue.has_value()) {
-					std::string texFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+				std::string texFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+				RE::BGSTextureSet* textureSet = nullptr;
+
+				if (texFormStr != "null") {
 					RE::TESForm* texForm = Utils::GetFormFromString(texFormStr);
 					if (!texForm) {
 						logger::warn("Invalid Form: '{}'.", texFormStr);
 						return;
 					}
 
-					RE::BGSTextureSet* textureSet = texForm->As<RE::BGSTextureSet>();
+					textureSet = texForm->As<RE::BGSTextureSet>();
 					if (!textureSet) {
 						logger::warn("'{}' is not a TextureSet.", texFormStr);
 						return;
 					}
-
-					g_patchMap[npc].HeadTexture = textureSet;
 				}
+
+				g_patchMap[npc].HeadTexture = textureSet;
 			}
 			else if (a_configData.Element == ElementType::kHeightMax) {
-				if (a_configData.AssignValue.has_value()) {
-					g_patchMap[npc].HeightMax = std::any_cast<float>(a_configData.AssignValue.value());
-				}
+				g_patchMap[npc].HeightMax = std::any_cast<float>(a_configData.AssignValue.value());
 			}
 			else if (a_configData.Element == ElementType::kHeightMin) {
-				if (a_configData.AssignValue.has_value()) {
-					g_patchMap[npc].HeightMin = std::any_cast<float>(a_configData.AssignValue.value());
-				}
+				g_patchMap[npc].HeightMin = std::any_cast<float>(a_configData.AssignValue.value());
 			}
 			else if (a_configData.Element == ElementType::kMorphs) {
 				PatchData& patchData = g_patchMap[npc];
@@ -872,49 +945,44 @@ namespace NPCs {
 				}
 			}
 			else if (a_configData.Element == ElementType::kRace) {
-				if (a_configData.AssignValue.has_value()) {
-					std::string raceFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
-					RE::TESForm* raceForm = Utils::GetFormFromString(raceFormStr);
-					if (!raceForm) {
-						logger::warn("Invalid Form: '{}'.", raceFormStr);
-						return;
-					}
+				std::string raceFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
 
-					RE::TESRace* race = raceForm->As<RE::TESRace>();
-					if (!race) {
-						logger::warn("'{}' is not a Race.", raceFormStr);
-						return;
-					}
-
-					g_patchMap[npc].Race = race;
+				RE::TESForm* raceForm = Utils::GetFormFromString(raceFormStr);
+				if (!raceForm) {
+					logger::warn("Invalid Form: '{}'.", raceFormStr);
+					return;
 				}
+
+				RE::TESRace* race = raceForm->As<RE::TESRace>();
+				if (!race) {
+					logger::warn("'{}' is not a Race.", raceFormStr);
+					return;
+				}
+
+				g_patchMap[npc].Race = race;
 			}
 			else if (a_configData.Element == ElementType::kSex) {
-				if (a_configData.AssignValue.has_value()) {
-					g_patchMap[npc].Sex = std::any_cast<std::uint8_t>(a_configData.AssignValue.value());
-				}
+				g_patchMap[npc].Sex = std::any_cast<std::uint8_t>(a_configData.AssignValue.value());
 			}
 			else if (a_configData.Element == ElementType::kSkin) {
-				if (a_configData.AssignValue.has_value()) {
-					std::string armoFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
-					if (armoFormStr == "null")
-						g_patchMap[npc].Skin = nullptr;
-					else {
-						RE::TESForm* armoForm = Utils::GetFormFromString(armoFormStr);
-						if (!armoForm) {
-							logger::warn("Invalid Form: '{}'.", armoFormStr);
-							return;
-						}
+				std::string armoFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+				RE::TESObjectARMO* armo = nullptr;
 
-						RE::TESObjectARMO* armo = armoForm->As<RE::TESObjectARMO>();
-						if (!armo) {
-							logger::warn("'{}' is not a Armor.", armoFormStr);
-							return;
-						}
+				if (armoFormStr != "null") {
+					RE::TESForm* armoForm = Utils::GetFormFromString(armoFormStr);
+					if (!armoForm) {
+						logger::warn("Invalid Form: '{}'.", armoFormStr);
+						return;
+					}
 
-						g_patchMap[npc].Skin = armo;
+					armo = armoForm->As<RE::TESObjectARMO>();
+					if (!armo) {
+						logger::warn("'{}' is not a Armor.", armoFormStr);
+						return;
 					}
 				}
+
+				g_patchMap[npc].Skin = armo;
 			}
 			else if (a_configData.Element == ElementType::kTints) {
 				PatchData& patchData = g_patchMap[npc];
@@ -937,19 +1005,13 @@ namespace NPCs {
 				}
 			}
 			else if (a_configData.Element == ElementType::kWeightFat) {
-				if (a_configData.AssignValue.has_value()) {
-					g_patchMap[npc].WeightFat = std::any_cast<float>(a_configData.AssignValue.value());
-				}
+				g_patchMap[npc].WeightFat = std::any_cast<float>(a_configData.AssignValue.value());
 			}
 			else if (a_configData.Element == ElementType::kWeightMuscular) {
-				if (a_configData.AssignValue.has_value()) {
-					g_patchMap[npc].WeightMuscular = std::any_cast<float>(a_configData.AssignValue.value());
-				}
+				g_patchMap[npc].WeightMuscular = std::any_cast<float>(a_configData.AssignValue.value());
 			}
 			else if (a_configData.Element == ElementType::kWeightThin) {
-				if (a_configData.AssignValue.has_value()) {
-					g_patchMap[npc].WeightThin = std::any_cast<float>(a_configData.AssignValue.value());
-				}
+				g_patchMap[npc].WeightThin = std::any_cast<float>(a_configData.AssignValue.value());
 			}
 		}
 	}
@@ -1077,6 +1139,9 @@ namespace NPCs {
 		using func_t = void(*)(RE::TESNPC&);
 
 		static void Patch_PreFunc(RE::TESNPC* a_npc, const PatchData& a_patchData) {
+			if (a_patchData.FullName.has_value())
+				a_npc->fullName = a_patchData.FullName.value();
+
 			if (a_patchData.HeightMax.has_value())
 				a_npc->heightMax = a_patchData.HeightMax.value();
 
@@ -1116,6 +1181,12 @@ namespace NPCs {
 		static void Patch_PostFunc(RE::TESNPC* a_npc, const PatchData& a_patchData) {
 			if (a_patchData.Class.has_value())
 				a_npc->cl = a_patchData.Class.value();
+
+			if (a_patchData.CombatStyle.has_value())
+				a_npc->combatStyle = a_patchData.CombatStyle.value();
+
+			if (a_patchData.DefaultOutfit.has_value())
+				a_npc->defOutfit = a_patchData.DefaultOutfit.value();
 
 			if (a_patchData.HairColor.has_value())
 				if (a_npc->headRelatedData)

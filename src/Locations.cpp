@@ -19,11 +19,13 @@ namespace Locations {
 	}
 
 	enum class ElementType {
+		kFullName,
 		kKeywords
 	};
 
 	std::string_view ElementTypeToString(ElementType a_value) {
 		switch (a_value) {
+		case ElementType::kFullName: return "FullName";
 		case ElementType::kKeywords: return "Keywords";
 		default: return std::string_view{};
 		}
@@ -55,6 +57,7 @@ namespace Locations {
 		FilterType Filter;
 		std::string FilterForm;
 		ElementType Element;
+		std::optional<std::string> AssignValue;
 		std::vector<Operation> Operations;
 	};
 
@@ -66,6 +69,7 @@ namespace Locations {
 			std::vector<RE::BGSKeyword*> DeleteKeywordVec;
 		};
 
+		std::optional<std::string> FullName;
 		std::optional<KeywordsData> Keywords;
 	};
 
@@ -95,30 +99,43 @@ namespace Locations {
 			if (!ParseElement(configData))
 				return std::nullopt;
 
-			token = reader.GetToken();
-			if (token != ".") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-
-			if (!ParseOperation(configData))
-				return std::nullopt;
-
-			while (true) {
-				token = reader.Peek();
-				if (token == ";") {
-					reader.GetToken();
-					break;
-				}
+			token = reader.Peek();
+			if (token == "=") {
+				if (!ParseAssignment(configData))
+					return std::nullopt;
 
 				token = reader.GetToken();
+				if (token != ";") {
+					logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return std::nullopt;
+				}
+			}
+			else {
+				token = reader.GetToken();
 				if (token != ".") {
-					logger::warn("Line {}, Col {}: Syntax error. Expected '.' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
 					return std::nullopt;
 				}
 
 				if (!ParseOperation(configData))
 					return std::nullopt;
+
+				while (true) {
+					token = reader.Peek();
+					if (token == ";") {
+						reader.GetToken();
+						break;
+					}
+
+					token = reader.GetToken();
+					if (token != ".") {
+						logger::warn("Line {}, Col {}: Syntax error. Expected '.' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+						return std::nullopt;
+					}
+
+					if (!ParseOperation(configData))
+						return std::nullopt;
+				}
 			}
 
 			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
@@ -128,6 +145,11 @@ namespace Locations {
 			std::string indent = std::string(a_indent * 4, ' ');
 
 			switch (a_configData.Element) {
+			case ElementType::kFullName:
+				logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
+					ElementTypeToString(a_configData.Element), a_configData.AssignValue.value());
+				break;
+
 			case ElementType::kKeywords:
 				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
 				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
@@ -175,11 +197,37 @@ namespace Locations {
 
 		bool ParseElement(ConfigData& a_configData) {
 			auto token = reader.GetToken();
-			if (token == "Keywords")
+			if (token == "FullName")
+				a_configData.Element = ElementType::kFullName;
+			else if (token == "Keywords")
 				a_configData.Element = ElementType::kKeywords;
 			else {
 				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
+			}
+
+			return true;
+		}
+
+		bool ParseAssignment(ConfigData& a_config) {
+			auto token = reader.GetToken();
+			if (token != "=") {
+				logger::warn("Line {}, Col {}: Syntax error. Expected '='.", reader.GetLastLine(), reader.GetLastLineIndex());
+				return false;
+			}
+
+			if (a_config.Element == ElementType::kFullName) {
+				token = reader.GetToken();
+				if (!token.starts_with('\"')) {
+					logger::warn("Line {}, Col {}: {} must be a string.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
+					return false;
+				}
+				else if (!token.ends_with('\"')) {
+					logger::warn("Line {}, Col {}: String must end with '\"'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return false;
+				}
+
+				a_config.AssignValue = std::string(token.substr(1, token.length() - 2));
 			}
 
 			return true;
@@ -270,7 +318,10 @@ namespace Locations {
 
 			PatchData& patchData = g_patchMap[location];
 
-			if (a_configData.Element == ElementType::kKeywords) {
+			if (a_configData.Element == ElementType::kFullName) {
+				patchData.FullName = a_configData.AssignValue.value();
+			}
+			else if (a_configData.Element == ElementType::kKeywords) {
 				if (!patchData.Keywords.has_value())
 					patchData.Keywords = PatchData::KeywordsData{};
 
@@ -365,6 +416,9 @@ namespace Locations {
 	}
 
 	void Patch(RE::BGSLocation* a_location, const PatchData& a_patchData) {
+		if (a_patchData.FullName.has_value())
+			a_location->fullName = a_patchData.FullName.value();
+
 		if (a_patchData.Keywords.has_value())
 			PatchKeywords(a_location, a_patchData.Keywords.value());
 	}
