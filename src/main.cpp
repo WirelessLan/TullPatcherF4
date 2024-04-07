@@ -2,6 +2,7 @@
 #include "Armors.h"
 #include "Cells.h"
 #include "CObjs.h"
+#include "DefaultObjectManagers.h"
 #include "FormLists.h"
 #include "Ingestibles.h"
 #include "Keywords.h"
@@ -22,6 +23,7 @@ void Patch() {
 	Armors::Patch();
 	Cells::Patch();
 	CObjs::Patch();
+	DefaultObjectManagers::Patch();
 	FormLists::Patch();
 	Ingestibles::Patch();
 	Keywords::Patch();
@@ -102,6 +104,7 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface * a_
 	Armors::ReadConfigs();
 	Cells::ReadConfigs();
 	CObjs::ReadConfigs();
+	DefaultObjectManagers::ReadConfigs();
 	FormLists::ReadConfigs();
 	Ingestibles::ReadConfigs();
 	Keywords::ReadConfigs();

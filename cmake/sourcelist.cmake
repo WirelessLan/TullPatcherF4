@@ -7,6 +7,8 @@ set(SOURCES
 	src/Cells.cpp
 	src/CObjs.h
 	src/CObjs.cpp
+	src/DefaultObjectManagers.h
+	src/DefaultObjectManagers.cpp
 	src/FormLists.h
 	src/FormLists.cpp
 	src/Ingestibles.h
