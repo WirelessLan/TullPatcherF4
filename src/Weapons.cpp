@@ -18,11 +18,15 @@ namespace Weapons {
 	}
 
 	enum class ElementType {
+		kAmmo,
+		kNPCAddAmmoList,
 		kObjectEffect,
 	};
 
 	std::string_view ElementTypeToString(ElementType a_value) {
 		switch (a_value) {
+		case ElementType::kAmmo: return "Ammo";
+		case ElementType::kNPCAddAmmoList: return "NPCAddAmmoList";
 		case ElementType::kObjectEffect: return "ObjectEffect";
 		default: return std::string_view{};
 		}
@@ -36,6 +40,8 @@ namespace Weapons {
 	};
 
 	struct PatchData {
+		std::optional<RE::TESAmmo*> Ammo;
+		std::optional<RE::TESLevItem*> NPCAddAmmoList;
 		std::optional<RE::EnchantmentItem*> ObjectEffect;
 	};
 
@@ -81,6 +87,8 @@ namespace Weapons {
 			std::string indent = std::string(a_indent * 4, ' ');
 
 			switch (a_configData.Element) {
+			case ElementType::kAmmo:
+			case ElementType::kNPCAddAmmoList:
 			case ElementType::kObjectEffect:
 				logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
 					ElementTypeToString(a_configData.Element), a_configData.AssignValue.value());
@@ -120,7 +128,11 @@ namespace Weapons {
 
 		bool ParseElement(ConfigData& a_config) {
 			auto token = reader.GetToken();
-			if (token == "ObjectEffect")
+			if (token == "Ammo")
+				a_config.Element = ElementType::kAmmo;
+			else if (token == "NPCAddAmmoList")
+				a_config.Element = ElementType::kNPCAddAmmoList;
+			else if (token == "ObjectEffect")
 				a_config.Element = ElementType::kObjectEffect;
 			else {
 				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
@@ -137,7 +149,7 @@ namespace Weapons {
 				return false;
 			}
 
-			if (a_config.Element == ElementType::kObjectEffect) {
+			if (a_config.Element == ElementType::kAmmo || a_config.Element == ElementType::kNPCAddAmmoList || a_config.Element == ElementType::kObjectEffect) {
 				token = reader.Peek();
 				if (token == "null") {
 					reader.GetToken();
@@ -201,7 +213,53 @@ namespace Weapons {
 				return;
 			}
 
-			if (a_configData.Element == ElementType::kObjectEffect) {
+			if (a_configData.Element == ElementType::kAmmo) {
+				if (!a_configData.AssignValue.has_value())
+					return;
+
+				if (a_configData.AssignValue.value() == "null") {
+					g_patchMap[weap].Ammo = nullptr;
+				}
+				else {
+					RE::TESForm* ammoForm = Utils::GetFormFromString(a_configData.AssignValue.value());
+					if (!ammoForm) {
+						logger::warn("Invalid Form: '{}'.", a_configData.AssignValue.value());
+						return;
+					}
+
+					RE::TESAmmo* ammo = ammoForm->As<RE::TESAmmo>();
+					if (!ammo) {
+						logger::warn("'{}' is not an Ammo.", a_configData.AssignValue.value());
+						return;
+					}
+
+					g_patchMap[weap].Ammo = ammo;
+				}
+			}
+			else if (a_configData.Element == ElementType::kNPCAddAmmoList) {
+				if (!a_configData.AssignValue.has_value())
+					return;
+
+				if (a_configData.AssignValue.value() == "null") {
+					g_patchMap[weap].NPCAddAmmoList = nullptr;
+				}
+				else {
+					RE::TESForm* levItemForm = Utils::GetFormFromString(a_configData.AssignValue.value());
+					if (!levItemForm) {
+						logger::warn("Invalid Form: '{}'.", a_configData.AssignValue.value());
+						return;
+					}
+
+					RE::TESLevItem* levItem = levItemForm->As<RE::TESLevItem>();
+					if (!levItem) {
+						logger::warn("'{}' is not a Leveled Item.", a_configData.AssignValue.value());
+						return;
+					}
+
+					g_patchMap[weap].NPCAddAmmoList = levItem;
+				}
+			}
+			else if (a_configData.Element == ElementType::kObjectEffect) {
 				if (!a_configData.AssignValue.has_value())
 					return;
 
@@ -247,6 +305,10 @@ namespace Weapons {
 		logger::info("======================== Start patching for Weapon ========================");
 
 		for (const auto& patchData : g_patchMap) {
+			if (patchData.second.Ammo.has_value())
+				patchData.first->weaponData.ammo = patchData.second.Ammo.value();
+			if (patchData.second.NPCAddAmmoList.has_value())
+				patchData.first->weaponData.npcAddAmmoList = patchData.second.NPCAddAmmoList.value();
 			if (patchData.second.ObjectEffect.has_value())
 				patchData.first->formEnchanting = patchData.second.ObjectEffect.value();
 		}
