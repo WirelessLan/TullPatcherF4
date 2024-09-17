@@ -5,7 +5,9 @@
 #include "Utils.h"
 
 namespace Configs {
-	ConfigReader::ConfigReader(std::string_view a_path) {
+	constexpr int EOF_CHAR = std::char_traits<char>::eof();
+
+	ConfigReader::ConfigReader(std::string_view a_path) : _currIndex(0), _currLine(0) {
 		std::ifstream configFile(std::string(a_path).c_str());
 		if (!configFile.is_open()) {
 			logger::warn("Cannot open the config file: {}", a_path);
@@ -25,20 +27,18 @@ namespace Configs {
 			_lines.push_back(line);
 	}
 
-	bool ConfigReader::EndOfFile() {
-		if (_currIndex >= _fileContents.size())
-			return true;
-		return false;
+	bool ConfigReader::EndOfFile() const {
+		return _currIndex >= _fileContents.size();
 	}
 
 	std::string_view ConfigReader::GetToken() {
-		std::uint8_t ch;
+		int ch;
 		std::size_t startIdx = _currIndex;
 		std::size_t tokenLen = 0;
 
 		while (true) {
 			ch = GetChar();
-			if (ch == 0xFF)
+			if (ch == EOF_CHAR)
 				break;
 
 			if (ch == '#') {
@@ -53,7 +53,7 @@ namespace Configs {
 						UndoGetChar();
 						break;
 					}
-					else if (ch == 0xFF)
+					else if (ch == EOF_CHAR)
 						break;
 				}
 
@@ -70,7 +70,7 @@ namespace Configs {
 				startIdx = _currIndex;
 				continue;
 			}
-			else if (std::isspace(static_cast<int>(ch))) {
+			else if (std::isspace(ch)) {
 				if (tokenLen != 0) {
 					UndoGetChar();
 					break;
@@ -97,7 +97,7 @@ namespace Configs {
 						UndoGetChar();
 						break;
 					}
-					else if (ch == 0xFF)
+					else if (ch == EOF_CHAR)
 						break;
 
 					tokenLen++;
@@ -130,21 +130,21 @@ namespace Configs {
 		return token;
 	}
 
-	std::size_t ConfigReader::GetLastLine()	{
+	std::size_t ConfigReader::GetLastLine() const	{
 		return _currLine + 1;
 	}
 
-	std::size_t ConfigReader::GetLastLineIndex() {
+	std::size_t ConfigReader::GetLastLineIndex() const {
 		std::size_t retIndex = 0;
 		for (std::size_t ii = 0; ii < _currLine; ii++)
 			retIndex += _lines[ii].size() + 1;
 		return _currIndex - retIndex + 1;
 	}
 
-	std::uint8_t ConfigReader::GetChar() {
+	int ConfigReader::GetChar() {
 		if (!EndOfFile())
 			return _fileContents[_currIndex++];
-		return 0xFF;
+		return EOF_CHAR;
 	}
 
 	void ConfigReader::UndoGetChar() {
