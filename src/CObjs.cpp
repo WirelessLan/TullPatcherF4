@@ -25,7 +25,8 @@ namespace CObjs {
 		kCategories,
 		kComponents,
 		kCreatedObject,
-		kCreatedObjectCount
+		kCreatedObjectCount,
+		kWorkbenchKeyword
 	};
 
 	std::string_view ElementTypeToString(ElementType a_value) {
@@ -34,6 +35,7 @@ namespace CObjs {
 		case ElementType::kComponents: return "Components";
 		case ElementType::kCreatedObject: return "CreatedObject";
 		case ElementType::kCreatedObjectCount: return "CreatedObjectCount";
+		case ElementType::kWorkbenchKeyword: return "WorkbenchKeyword";
 		default: return std::string_view{};
 		}
 	}
@@ -93,6 +95,7 @@ namespace CObjs {
 		std::optional<ComponentsData> Components;
 		std::optional<RE::TESForm*> CreatedObject;
 		std::optional<std::uint16_t> CreatedObjectCount;
+		std::optional<RE::BGSKeyword*> WorkbenchKeyword;
 	};
 
 	std::vector<Parsers::Statement<ConfigData>> g_configVec;
@@ -222,6 +225,7 @@ namespace CObjs {
 				break;
 
 			case ElementType::kCreatedObject:
+			case ElementType::kWorkbenchKeyword:
 				logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element),
 					std::any_cast<std::string>(a_configData.AssignValue.value()));
 				break;
@@ -275,6 +279,8 @@ namespace CObjs {
 				a_configData.Element = ElementType::kCreatedObject;
 			else if (token == "CreatedObjectCount")
 				a_configData.Element = ElementType::kCreatedObjectCount;
+			else if (token == "WorkbenchKeyword")
+				a_configData.Element = ElementType::kWorkbenchKeyword;
 			else {
 				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -290,12 +296,19 @@ namespace CObjs {
 				return false;
 			}
 
-			if (a_configData.Element == ElementType::kCreatedObject) {
-				std::optional<std::string> form = ParseForm();
-				if (!form.has_value())
-					return false;
+			if (a_configData.Element == ElementType::kCreatedObject || a_configData.Element == ElementType::kWorkbenchKeyword) {
+				token = reader.Peek();
+				if (token == "null") {
+					reader.GetToken();
+					a_configData.AssignValue = std::any(std::string(token));
+				}
+				else {
+					std::optional<std::string> form = ParseForm();
+					if (!form.has_value())
+						return false;
 
-				a_configData.AssignValue = std::any(form.value());
+					a_configData.AssignValue = std::any(form.value());
+				}
 			}
 			else if (a_configData.Element == ElementType::kCreatedObjectCount) {
 				token = reader.GetToken();
@@ -545,17 +558,42 @@ namespace CObjs {
 		}
 		else if (a_configData.Element == ElementType::kCreatedObject) {
 			std::string formStr = std::any_cast<std::string>(a_configData.AssignValue.value());
-
-			RE::TESForm* form = Utils::GetFormFromString(formStr);
-			if (!form) {
-				logger::warn("Invalid Form: '{}'.", formStr);
-				return;
+			if (formStr == "null") {
+				a_patchData.CreatedObject = nullptr;
 			}
+			else {
+				RE::TESForm* form = Utils::GetFormFromString(formStr);
+				if (!form) {
+					logger::warn("Invalid Form: '{}'.", formStr);
+					return;
+				}
 
-			a_patchData.CreatedObject = form;
+				a_patchData.CreatedObject = form;
+			}
 		}
 		else if (a_configData.Element == ElementType::kCreatedObjectCount) {
 			a_patchData.CreatedObjectCount = std::any_cast<std::uint16_t>(a_configData.AssignValue.value());
+		}
+		else if (a_configData.Element == ElementType::kWorkbenchKeyword) {
+			std::string keywordFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+			if (keywordFormStr == "null") {
+				a_patchData.WorkbenchKeyword = nullptr;
+			}
+			else {
+				RE::TESForm* keywordForm = Utils::GetFormFromString(keywordFormStr);
+				if (!keywordForm) {
+					logger::warn("Invalid Form: '{}'.", keywordFormStr);
+					return;
+				}
+
+				RE::BGSKeyword* keyword = keywordForm->As<RE::BGSKeyword>();
+				if (!keyword) {
+					logger::warn("'{}' is not a Keyword.", keywordFormStr);
+					return;
+				}
+
+				a_patchData.WorkbenchKeyword = keyword;
+			}
 		}
 	}
 
@@ -783,6 +821,8 @@ namespace CObjs {
 			a_cobjForm->createdItem = a_patchData.CreatedObject.value();
 		if (a_patchData.CreatedObjectCount.has_value())
 			a_cobjForm->data.numConstructed = a_patchData.CreatedObjectCount.value();
+		if (a_patchData.WorkbenchKeyword.has_value())
+			a_cobjForm->benchKeyword = a_patchData.WorkbenchKeyword.value();
 	}
 
 	void PatchByFilters() {
