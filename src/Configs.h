@@ -11,12 +11,18 @@ namespace Configs {
 		std::size_t GetLastLineIndex() const;
 
 	protected:
-		int GetChar();
-		void UndoGetChar();
+		bool IsDelimiter(char ch) const;
+		void ParseTokens();
+
+		struct Token {
+			std::string_view value;
+			std::size_t line;
+			std::size_t column;
+		};
 
 		std::string _fileContents;
-		std::vector<std::string> _lines;
-		std::size_t _currIndex;
-		std::size_t _currLine;
+		std::vector<Token> _tokens;
+		std::size_t _currentTokenIndex;
+		std::size_t _lastTokenIndex;
 	};
 }

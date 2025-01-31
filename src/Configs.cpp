@@ -7,7 +7,7 @@
 namespace Configs {
 	constexpr int EOF_CHAR = std::char_traits<char>::eof();
 
-	ConfigReader::ConfigReader(std::string_view a_path) : _currIndex(0), _currLine(0) {
+	ConfigReader::ConfigReader(std::string_view a_path) : _currentTokenIndex(0), _lastTokenIndex(0) {
 		std::ifstream configFile(std::string(a_path).c_str());
 		if (!configFile.is_open()) {
 			logger::warn("Cannot open the config file: {}", a_path);
@@ -19,136 +19,132 @@ namespace Configs {
 
 		_fileContents = buffer.str();
 
-		buffer.clear();
-		buffer.seekg(0);
-
-		std::string line;
-		while (std::getline(buffer, line))
-			_lines.push_back(line);
+		ParseTokens();
 	}
 
 	bool ConfigReader::EndOfFile() const {
-		return _currIndex >= _fileContents.size();
+		return _currentTokenIndex >= _tokens.size();
 	}
 
 	std::string_view ConfigReader::GetToken() {
-		int ch;
-		std::size_t startIdx = _currIndex;
-		std::size_t tokenLen = 0;
-
-		while (true) {
-			ch = GetChar();
-			if (ch == EOF_CHAR)
-				break;
-
-			if (ch == '#') {
-				if (tokenLen != 0) {
-					UndoGetChar();
-					break;
-				}
-
-				while (true) {
-					ch = GetChar();
-					if (ch == '\n') {
-						UndoGetChar();
-						break;
-					}
-					else if (ch == EOF_CHAR)
-						break;
-				}
-
-				startIdx = _currIndex;
-				continue;
-			}
-			else if (ch == '\n') {
-				if (tokenLen != 0) {
-					UndoGetChar();
-					break;
-				}
-
-				_currLine++;
-				startIdx = _currIndex;
-				continue;
-			}
-			else if (std::isspace(ch)) {
-				if (tokenLen != 0) {
-					UndoGetChar();
-					break;
-				}
-
-				startIdx = _currIndex;
-				continue;
-			}
-			else if (ch == '\"') {
-				if (tokenLen != 0) {
-					UndoGetChar();
-					break;
-				}
-
-				tokenLen++;
-
-				while (true) {
-					ch = GetChar();
-					if (ch == '\"') {
-						tokenLen++;
-						break;
-					}
-					else if (ch == '\n') {
-						UndoGetChar();
-						break;
-					}
-					else if (ch == EOF_CHAR)
-						break;
-
-					tokenLen++;
-				}
-
-				break;
-			}
-			else if (ch == '.' || ch == ',' || ch == '=' || ch == '!' || ch == '&' || ch == '|' || ch == '(' || ch == ')' || ch == ';') {
-				if (tokenLen != 0) {
-					UndoGetChar();
-					break;
-				}
-
-				tokenLen++;
-				break;
-			}
-
-			tokenLen++;
+		if (EndOfFile()) {
+			return std::string_view{};
 		}
-		
-		return std::string_view(_fileContents).substr(startIdx, tokenLen);
+		_lastTokenIndex = _currentTokenIndex;
+		return _tokens[_currentTokenIndex++].value;
 	}
 
 	std::string_view ConfigReader::Peek() {
-		std::size_t lastIndex = _currIndex;
-		std::size_t lastLine = _currLine;
-		std::string_view token = GetToken();
-		_currLine = lastLine;
-		_currIndex = lastIndex;
-		return token;
+		if (EndOfFile()) {
+			return std::string_view{};
+		}
+		_lastTokenIndex = _currentTokenIndex;
+		return _tokens[_currentTokenIndex].value;
 	}
 
-	std::size_t ConfigReader::GetLastLine() const	{
-		return _currLine + 1;
+	std::size_t ConfigReader::GetLastLine() const {
+		return _tokens[_lastTokenIndex].line;
 	}
 
 	std::size_t ConfigReader::GetLastLineIndex() const {
-		std::size_t retIndex = 0;
-		for (std::size_t ii = 0; ii < _currLine; ii++)
-			retIndex += _lines[ii].size() + 1;
-		return _currIndex - retIndex + 1;
+		return _tokens[_lastTokenIndex].column;
 	}
 
-	int ConfigReader::GetChar() {
-		if (!EndOfFile())
-			return _fileContents[_currIndex++];
-		return EOF_CHAR;
+	bool ConfigReader::IsDelimiter(char ch) const {
+		return ch == '.' || ch == ',' || ch == '=' || ch == '!' ||
+		       ch == '&' || ch == '|' || ch == '(' || ch == ')' || ch == ';';
 	}
 
-	void ConfigReader::UndoGetChar() {
-		if (_currIndex > 0)
-			_currIndex--;
+	void ConfigReader::ParseTokens() {
+		std::size_t index = 0;
+		std::size_t line = 1;
+		std::size_t column = 1;
+		const std::size_t fileLength = _fileContents.size();
+
+		while (index < fileLength) {
+			char ch = _fileContents[index];
+
+			// Handle comments
+			if (ch == '#') {
+				while (index < fileLength && _fileContents[index] != '\n') {
+					index++;
+					column++;
+				}
+			}
+			// Handle newline characters
+			else if (ch == '\n') {
+				index++;
+				line++;
+				column = 1;
+			}
+			// Handle whitespace characters
+			else if (std::isspace(static_cast<int>(ch))) {
+				while (index < fileLength && std::isspace(static_cast<int>(_fileContents[index])) && _fileContents[index] != '\n') {
+					index++;
+					column++;
+				}
+			}
+			// Handle string literals
+			else if (ch == '\"') {
+				std::size_t startIdx = index;
+				std::size_t startLine = line;
+				std::size_t startColumn = column;
+
+				index++;
+				column++;
+
+                while (index < fileLength) {
+					char current = _fileContents[index];
+
+					if (current == '\"') {
+						index++;
+						column++;
+						break;
+					} else if (current == '\n') {
+						break;
+					} else {
+						index++;
+						column++;
+					}
+				}
+
+				std::size_t tokenLen = index - startIdx;
+				std::string_view tokenValue = std::string_view(_fileContents).substr(startIdx, tokenLen);
+				_tokens.emplace_back(Token{ tokenValue, startLine, startColumn });
+			}
+			// Handle delimiters as individual tokens
+			else if (IsDelimiter(ch)) {
+				std::size_t startIdx = index;
+				std::size_t startLine = line;
+				std::size_t startColumn = column;
+				std::size_t tokenLen = 1;
+				std::string_view tokenValue = std::string_view(_fileContents).substr(startIdx, tokenLen);
+				_tokens.emplace_back(Token{ tokenValue, startLine, startColumn });
+				index++;
+				column++;
+			}
+			// Handle general tokens
+			else {
+				std::size_t startIdx = index;
+				std::size_t startLine = line;
+				std::size_t startColumn = column;
+				std::size_t tokenLen = 0;
+
+				while (index < fileLength) {
+					char current = _fileContents[index];
+					if (std::isspace(static_cast<int>(current)) || current == '#' || current == '\n' || IsDelimiter(current)) {
+						break;
+					}
+					index++;
+					column++;
+					tokenLen++;
+				}
+
+				if (tokenLen > 0) {
+					std::string_view tokenValue = std::string_view(_fileContents).substr(startIdx, tokenLen);
+					_tokens.emplace_back(Token{ tokenValue, startLine, startColumn });
+				}
+			}
+		}
 	}
 }

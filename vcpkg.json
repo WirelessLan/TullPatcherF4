@@ -1,6 +1,6 @@
 {
   "name": "tullpatcherf4",
-  "version-string": "0.9.2",
+  "version-string": "0.9.3",
   "license": "MIT",
   "dependencies": [
     "boost-stl-interfaces",
@@ -8,5 +8,5 @@
     "mmio",
     "spdlog"
   ],
-  "builtin-baseline": "3508985146f1b1d248c67ead13f8f54be5b4f5da"
+  "builtin-baseline": "6f29f12e82a8293156836ad81cc9bf5af41fe836"
 }

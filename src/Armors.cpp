@@ -20,13 +20,15 @@ namespace Armors {
 
 	enum class ElementType {
 		kBipedObjectSlots,
-		kFullName
+		kFullName,
+		kObjectEffect
 	};
 
 	std::string_view ElementTypeToString(ElementType a_value) {
 		switch (a_value) {
 		case ElementType::kBipedObjectSlots: return "BipedObjectSlots";
 		case ElementType::kFullName: return "FullName";
+		case ElementType::kObjectEffect: return "ObjectEffect";
 		default: return std::string_view{};
 		}
 	}
@@ -41,6 +43,7 @@ namespace Armors {
 	struct PatchData {
 		std::optional<std::uint32_t> BipedObjectSlots;
 		std::optional<std::string> FullName;
+		std::optional<RE::EnchantmentItem*> ObjectEffect;
 	};
 
 	std::vector<Parsers::Statement<ConfigData>> g_configVec;
@@ -52,13 +55,15 @@ namespace Armors {
 
 	protected:
 		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
-			if (reader.EndOfFile() || reader.Peek().empty())
+			if (reader.EndOfFile() || reader.Peek().empty()) {
 				return std::nullopt;
+			}
 
 			ConfigData configData{};
 
-			if (!ParseFilter(configData))
+			if (!ParseFilter(configData)) {
 				return std::nullopt;
+			}
 
 			auto token = reader.GetToken();
 			if (token != ".") {
@@ -66,11 +71,13 @@ namespace Armors {
 				return std::nullopt;
 			}
 
-			if (!ParseElement(configData))
+			if (!ParseElement(configData)) {
 				return std::nullopt;
+			}
 
-			if (!ParseAssignment(configData))
+			if (!ParseAssignment(configData)) {
 				return std::nullopt;
+			}
 
 			token = reader.GetToken();
 			if (token != ";") {
@@ -94,13 +101,19 @@ namespace Armors {
 				logger::info("{}{}({}).{} = \"{}\";", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
 					ElementTypeToString(a_configData.Element), std::any_cast<std::string>(a_configData.AssignValue.value()));
 				break;
+
+			case ElementType::kObjectEffect:
+				logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
+					ElementTypeToString(a_configData.Element), std::any_cast<std::string>(a_configData.AssignValue.value()));
+				break;
 			}
 		}
 
 		bool ParseFilter(ConfigData& a_config) {
 			auto token = reader.GetToken();
-			if (token == "FilterByFormID")
+			if (token == "FilterByFormID") {
 				a_config.Filter = FilterType::kFormID;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid FilterName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -113,8 +126,9 @@ namespace Armors {
 			}
 
 			auto filterForm = ParseForm();
-			if (!filterForm.has_value())
+			if (!filterForm.has_value()) {
 				return false;
+			}
 
 			a_config.FilterForm = filterForm.value();
 
@@ -129,10 +143,15 @@ namespace Armors {
 
 		bool ParseElement(ConfigData& a_config) {
 			auto token = reader.GetToken();
-			if (token == "BipedObjectSlots")
+			if (token == "BipedObjectSlots") {
 				a_config.Element = ElementType::kBipedObjectSlots;
-			else if (token == "FullName")
+			}
+			else if (token == "FullName") {
 				a_config.Element = ElementType::kFullName;
+			}
+			else if (token == "ObjectEffect") {
+				a_config.Element = ElementType::kObjectEffect;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -152,16 +171,19 @@ namespace Armors {
 				std::uint32_t bipedObjectSlotsValue = 0;
 
 				auto bipedSlot = ParseBipedSlot();
-				if (!bipedSlot.has_value())
+				if (!bipedSlot.has_value()) {
 					return false;
+				}
 
-				if (bipedSlot.value() != 0)
+				if (bipedSlot.value() != 0) {
 					bipedObjectSlotsValue |= 1 << (bipedSlot.value() - 30);
+				}
 
 				while (true) {
 					token = reader.Peek();
-					if (token == ";")
+					if (token == ";") {
 						break;
+					}
 
 					token = reader.GetToken();
 					if (token != "|") {
@@ -170,11 +192,13 @@ namespace Armors {
 					}
 
 					bipedSlot = ParseBipedSlot();
-					if (!bipedSlot.has_value())
+					if (!bipedSlot.has_value()) {
 						return false;
+					}
 
-					if (bipedSlot.value() != 0)
+					if (bipedSlot.value() != 0) {
 						bipedObjectSlotsValue |= 1 << (bipedSlot.value() - 30);
+					}
 				}
 
 				a_config.AssignValue = std::any(bipedObjectSlotsValue);
@@ -192,6 +216,19 @@ namespace Armors {
 
 				std::string value = std::string(token.substr(1, token.length() - 2));
 				a_config.AssignValue = std::any(value);
+			}
+			else if (a_config.Element == ElementType::kObjectEffect) {
+				token = reader.Peek();
+				if (token == "null") {
+					a_config.AssignValue = std::any(std::string(reader.GetToken()));
+				} else {
+					auto effectForm = ParseForm();
+					if (!effectForm.has_value()) {
+						return false;
+					}
+
+					a_config.AssignValue = std::any(std::string(effectForm.value()));
+				}
 			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid Assignment to {}.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
@@ -228,16 +265,19 @@ namespace Armors {
 			std::string retStr;
 			std::string separtor = " | ";
 
-			if (a_bipedObjSlots == 0)
+			if (a_bipedObjSlots == 0) {
 				return "0";
-
-			for (std::size_t ii = 0; ii < 32; ii++) {
-				if (a_bipedObjSlots & (1 << ii))
-					retStr += std::to_string(ii + 30) + separtor;
 			}
 
-			if (retStr.empty())
+			for (std::size_t ii = 0; ii < 32; ii++) {
+				if (a_bipedObjSlots & (1 << ii)) {
+					retStr += std::to_string(ii + 30) + separtor;
+				}
+			}
+
+			if (retStr.empty()) {
 				return retStr;
+			}
 
 			return retStr.substr(0, retStr.size() - separtor.size());
 		}
@@ -251,17 +291,20 @@ namespace Armors {
 
 	void ReadConfigs() {
 		const std::filesystem::path configDir{ "Data\\" + std::string(Version::PROJECT) + "\\Armor" };
-		if (!std::filesystem::exists(configDir))
+		if (!std::filesystem::exists(configDir)) {
 			return;
+		}
 
 		const std::regex filter(".*\\.cfg", std::regex_constants::icase);
 		const std::filesystem::directory_iterator dir_iter(configDir);
 		for (auto& iter : dir_iter) {
-			if (!std::filesystem::is_regular_file(iter.status()))
+			if (!std::filesystem::is_regular_file(iter.status())) {
 				continue;
+			}
 
-			if (!std::regex_match(iter.path().filename().string(), filter))
+			if (!std::regex_match(iter.path().filename().string(), filter)) {
 				continue;
+			}
 
 			std::string path = iter.path().string();
 			logger::info("=========== Reading Armor config file: {} ===========", path);
@@ -285,22 +328,51 @@ namespace Armors {
 			}
 
 			if (a_configData.Element == ElementType::kBipedObjectSlots) {
-				if (a_configData.AssignValue.has_value())
+				if (a_configData.AssignValue.has_value()) {
 					g_patchMap[armo].BipedObjectSlots = std::any_cast<std::uint32_t>(a_configData.AssignValue.value());
+				}
 			}
 			else if (a_configData.Element == ElementType::kFullName) {
-				if (a_configData.AssignValue.has_value())
+				if (a_configData.AssignValue.has_value()) {
 					g_patchMap[armo].FullName = std::any_cast<std::string>(a_configData.AssignValue.value());
+				}
+			}
+			else if (a_configData.Element == ElementType::kObjectEffect) {
+				if (!a_configData.AssignValue.has_value()) {
+					return;
+				}
+
+				std::string effectFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+
+				if (effectFormStr == "null") {
+					g_patchMap[armo].ObjectEffect = nullptr;
+				} else {
+					RE::TESForm* effectForm = Utils::GetFormFromString(effectFormStr);
+					if (!effectForm) {
+						logger::warn("Invalid Form: '{}'.", effectFormStr);
+						return;
+					}
+
+					RE::EnchantmentItem* objectEffect = effectForm->As<RE::EnchantmentItem>();
+					if (!objectEffect) {
+						logger::warn("'{}' is not an Object Effect.", effectFormStr);
+						return;
+					}
+
+					g_patchMap[armo].ObjectEffect = objectEffect;
+				}
 			}
 		}
 	}
 
 	void Prepare(const std::vector<Parsers::Statement<ConfigData>>& a_configVec) {
 		for (const auto& configData : a_configVec) {
-			if (configData.Type == Parsers::StatementType::kExpression)
+			if (configData.Type == Parsers::StatementType::kExpression) {
 				Prepare(configData.ExpressionStatement.value());
-			else if (configData.Type == Parsers::StatementType::kConditional)
+			}
+			else if (configData.Type == Parsers::StatementType::kConditional) {
 				Prepare(configData.ConditionalStatement->Evaluates());
+			}
 		}
 	}
 
@@ -315,10 +387,15 @@ namespace Armors {
 		logger::info("======================== Start patching for Armor ========================");
 
 		for (const auto& patchData : g_patchMap) {
-			if (patchData.second.BipedObjectSlots.has_value())
+			if (patchData.second.BipedObjectSlots.has_value()) {
 				patchData.first->bipedModelData.bipedObjectSlots = patchData.second.BipedObjectSlots.value();
-			if (patchData.second.FullName.has_value())
+			}
+			if (patchData.second.FullName.has_value()) {
 				patchData.first->fullName = patchData.second.FullName.value();
+			}
+			if (patchData.second.ObjectEffect.has_value()) {
+				patchData.first->formEnchanting = patchData.second.ObjectEffect.value();
+			}
 		}
 
 		logger::info("======================== Finished patching for Armor ========================");
