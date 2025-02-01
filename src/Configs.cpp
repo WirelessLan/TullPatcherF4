@@ -5,8 +5,6 @@
 #include "Utils.h"
 
 namespace Configs {
-	constexpr int EOF_CHAR = std::char_traits<char>::eof();
-
 	ConfigReader::ConfigReader(std::string_view a_path) : _currentTokenIndex(0), _lastTokenIndex(0) {
 		std::ifstream configFile(std::string(a_path).c_str());
 		if (!configFile.is_open()) {
@@ -78,8 +76,8 @@ namespace Configs {
 				column = 1;
 			}
 			// Handle whitespace characters
-			else if (std::isspace(static_cast<int>(ch))) {
-				while (index < fileLength && std::isspace(static_cast<int>(_fileContents[index])) && _fileContents[index] != '\n') {
+			else if (std::isspace(static_cast<unsigned char>(ch))) {
+				while (index < fileLength && std::isspace(static_cast<unsigned char>(_fileContents[index])) && _fileContents[index] != '\n') {
 					index++;
 					column++;
 				}
@@ -132,7 +130,7 @@ namespace Configs {
 
 				while (index < fileLength) {
 					char current = _fileContents[index];
-					if (std::isspace(static_cast<int>(current)) || current == '#' || current == '\n' || IsDelimiter(current)) {
+					if (std::isspace(static_cast<unsigned char>(current)) || current == '#' || current == '\n' || IsDelimiter(current)) {
 						break;
 					}
 					index++;

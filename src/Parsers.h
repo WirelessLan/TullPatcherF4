@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Configs.h"
+#include "Utils.h"
 
 namespace Parsers {
 	struct Condition {
@@ -29,7 +30,8 @@ namespace Parsers {
 
 	enum class StatementType {
 		kConditional,
-		kExpression
+		kExpression,
+		kNone,
 	};
 
 	template<typename T>
@@ -52,7 +54,7 @@ namespace Parsers {
 			return retStatement;
 		}
 
-		StatementType Type;
+		StatementType Type = StatementType::kNone;
 		std::optional<ConditionalStatement<T>> ConditionalStatement = std::nullopt;
 		std::optional<T> ExpressionStatement = std::nullopt;
 	};
@@ -65,12 +67,14 @@ namespace Parsers {
 		std::vector<Statement<T>> ElseStatements;
 
 		const std::vector<Statement<T>>& Evaluates() const {
-			if (EvaluateConditions(IfStatements.first))
+			if (EvaluateConditions(IfStatements.first)) {
 				return IfStatements.second;
+			}
 			
 			for (const auto& elseIfStatement : ElseIfStatements) {
-				if (EvaluateConditions(elseIfStatement.first))
+				if (EvaluateConditions(elseIfStatement.first)) {
 					return elseIfStatement.second;
+				}
 			}
 
 			return ElseStatements;
@@ -87,8 +91,9 @@ namespace Parsers {
 
 			while (!reader.EndOfFile()) {
 				auto parsedStatement = ParseStatement();
-				if (!parsedStatement.has_value())
+				if (!parsedStatement.has_value()) {
 					break;
+				}
 
 				PrintStatement(parsedStatement.value(), 0);
 
@@ -102,10 +107,12 @@ namespace Parsers {
 		virtual std::optional<Statement<T>> ParseExpressionStatement() = 0;
 
 		void PrintStatement(const Statement<T>& a_statement, int a_indent) {
-			if (a_statement .Type == StatementType::kExpression)
+			if (a_statement .Type == StatementType::kExpression) {
 				PrintExpressionStatement(a_statement.ExpressionStatement.value(), a_indent);
-			else if (a_statement.Type == StatementType::kConditional)
+			}
+			else if (a_statement.Type == StatementType::kConditional) {
 				PrintConditionalStatement(a_statement.ConditionalStatement.value(), a_indent);
+			}
 		}
 
 		virtual void PrintExpressionStatement(const T& a_expressionStatement, int a_indent) = 0;
@@ -114,16 +121,20 @@ namespace Parsers {
 			std::string retStr;
 
 			for (const ConditionToken& conditionToken : a_conditions) {
-				if (conditionToken.Type == ConditionToken::TokenType::kParenthesis)
+				if (conditionToken.Type == ConditionToken::TokenType::kParenthesis) {
 					retStr += conditionToken.Operator.value();
-				else if (conditionToken.Type == ConditionToken::TokenType::kOperator) {
-					if (conditionToken.Operator == "!")
-						retStr += conditionToken.Operator.value();
-					else
-						retStr += " " + conditionToken.Operator.value() + " ";
 				}
-				else
+				else if (conditionToken.Type == ConditionToken::TokenType::kOperator) {
+					if (conditionToken.Operator == "!") {
+						retStr += conditionToken.Operator.value();
+					}
+					else {
+						retStr += " " + conditionToken.Operator.value() + " ";
+					}
+				}
+				else {
 					retStr += conditionToken.Condition->Name + "(" + conditionToken.Condition->Params + ")";
+				}
 			}
 
 			return retStr;
@@ -140,8 +151,9 @@ namespace Parsers {
 			logger::info("{}{}", indent, logmsg);
 			logger::info("{}{{", indent);
 
-			for (const Statement<T> statement : a_conditionalStatement.IfStatements.second)
+			for (const Statement<T> statement : a_conditionalStatement.IfStatements.second) {
 				PrintStatement(statement, a_indent + 1);
+			}
 
 			logger::info("{}}}", indent);
 
@@ -153,8 +165,9 @@ namespace Parsers {
 				logger::info("{}{}", indent, logmsg);
 				logger::info("{}{{", indent);
 
-				for (const Statement<T> statement : elseIfStatement.second)
+				for (const Statement<T> statement : elseIfStatement.second) {
 					PrintStatement(statement, a_indent + 1);
+				}
 
 				logger::info("{}}}", indent);
 			}
@@ -165,8 +178,9 @@ namespace Parsers {
 				logger::info("{}{}", indent, logmsg);
 				logger::info("{}{{", indent);
 
-				for (const Statement<T> statement : a_conditionalStatement.ElseStatements)
+				for (const Statement<T> statement : a_conditionalStatement.ElseStatements) {
 					PrintStatement(statement, a_indent + 1);
+				}
 
 				logger::info("{}}}", indent);
 			}
@@ -174,15 +188,16 @@ namespace Parsers {
 
 		std::optional<Statement<T>> ParseStatement() {
 			auto token = reader.Peek();
-			if (token != "if")
-				return ParseExpressionStatement();
-			else
+			if (token == "if") {
 				return ParseConditionalStatement();
+			}
+			return ParseExpressionStatement();
 		}
 
 		std::optional<Statement<T>> ParseConditionalStatement() {
-			if (reader.EndOfFile() || reader.Peek().empty())
+			if (reader.EndOfFile() || reader.Peek().empty()) {
 				return std::nullopt;
+			}
 
 			ConditionalStatement<T> conditionalStatement;
 
@@ -199,8 +214,9 @@ namespace Parsers {
 			}
 
 			std::vector<ConditionToken> ifConditions = ParseConditions();
-			if (ifConditions.empty())
+			if (ifConditions.empty()) {
 				return std::nullopt;
+			}
 
 			token = reader.GetToken();
 			if (token != ")") {
@@ -224,8 +240,9 @@ namespace Parsers {
 				}
 
 				std::optional<Statement<T>> parsedStatement = ParseStatement();
-				if (!parsedStatement.has_value())
+				if (!parsedStatement.has_value()) {
 					return std::nullopt;
+				}
 
 				ifStatements.push_back(parsedStatement.value());
 			}
@@ -233,8 +250,9 @@ namespace Parsers {
 			conditionalStatement.IfStatements = std::make_pair(ifConditions, ifStatements);
 
 			token = reader.Peek();
-			if (token != "else")
+			if (token != "else") {
 				return Statement<T>::CreateConditionalStatement(conditionalStatement);
+			}
 
 			while (true) {
 				reader.GetToken();
@@ -257,8 +275,9 @@ namespace Parsers {
 					}
 
 					elseIfConditions = ParseConditions();
-					if (elseIfConditions.empty())
+					if (elseIfConditions.empty()) {
 						return std::nullopt;
+					}
 
 					token = reader.GetToken();
 					if (token != ")") {
@@ -281,8 +300,9 @@ namespace Parsers {
 					}
 
 					auto parsedStatement = ParseStatement();
-					if (!parsedStatement.has_value())
+					if (!parsedStatement.has_value()) {
 						return std::nullopt;
+					}
 
 					elseIfStatements.push_back(parsedStatement.value());
 				}
@@ -296,8 +316,9 @@ namespace Parsers {
 				}
 
 				token = reader.Peek();
-				if (token != "else")
+				if (token != "else") {
 					break;
+				}
 			}
 
 			return Statement<T>::CreateConditionalStatement(conditionalStatement);
@@ -314,16 +335,18 @@ namespace Parsers {
 
 			while (true) {
 				token = reader.Peek();
-				if (token == ")")
+				if (token == ")") {
 					break;
+				}
 
 				token = reader.GetToken();
 				if (token == "(") {
 					retVec.push_back(ConditionToken{ ConditionToken::TokenType::kParenthesis, std::nullopt, std::string(token) });
 
 					auto subConditions = ParseConditions();
-					if (subConditions.empty())
+					if (subConditions.empty()) {
 						return std::vector<ConditionToken>{};
+					}
 
 					retVec.insert(retVec.end(), subConditions.begin(), subConditions.end());
 
@@ -371,8 +394,9 @@ namespace Parsers {
 						}
 						else if (conditionName == "IsFormExists") {
 							auto parsedForm = ParseForm();
-							if (!parsedForm.has_value())
+							if (!parsedForm.has_value()) {
 								return std::vector<ConditionToken>{};
+							}
 
 							retVec.push_back(ConditionToken{ ConditionToken::TokenType::kCondition, Condition{ Condition::ConditionType::kFunction, conditionName, parsedForm.value() }, std::nullopt });
 						}
@@ -441,13 +465,15 @@ namespace Parsers {
 		}
 
 		bool IsHexString(std::string_view a_token) {
-			if (a_token.empty())
+			if (a_token.empty()) {
 				return false;
+			}
 
 			std::size_t start_idx = (a_token.length() >= 2 && (a_token[0] == '0' && (a_token[1] == 'x' || a_token[1] == 'X'))) ? 2 : 0;
 
-			if (start_idx == 2 && a_token.size() == 2)
+			if (start_idx == 2 && a_token.size() == 2) {
 				return false;
+			}
 
 			return std::all_of(a_token.begin() + start_idx, a_token.end(), [](unsigned char c) {
 				return std::isxdigit(c);
@@ -483,6 +509,85 @@ namespace Parsers {
 			form += token;
 
 			return form;
+		}
+
+		std::optional<float> ParseNumber() {
+			auto token = reader.GetToken();
+			if (token.empty()) {
+				logger::warn("Line {}, Col {}: Expected value.", reader.GetLastLine(), reader.GetLastLineIndex());
+				return std::nullopt;
+			}
+
+			std::string numStr = std::string(token);
+			if (reader.Peek() == ".") {
+				numStr += reader.GetToken();
+
+				token = reader.GetToken();
+				if (token.empty()) {
+					logger::warn("Line {}, Col {}: Expected decimal value '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					return std::nullopt;
+				}
+
+				numStr += std::string(token);
+			}
+
+			if (!Utils::IsValidDecimalNumber(numStr)) {
+				logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), numStr);
+				return std::nullopt;
+			}
+
+			float parsedValue;
+			auto parsingResult = std::from_chars(numStr.data(), numStr.data() + numStr.size(), parsedValue);
+			if (parsingResult.ec != std::errc()) {
+				logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), numStr);
+				return std::nullopt;
+			}
+
+			return parsedValue;
+		}
+
+		std::optional<std::uint32_t> ParseBipedSlot() {
+			auto token = reader.GetToken();
+			if (token.empty()) {
+				logger::warn("Line {}, Col {}: Expected BipedSlot '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				return std::nullopt;
+			}
+
+			unsigned long parsedValue = 0;
+
+			auto parsingResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+			if (parsingResult.ec != std::errc()) {
+				logger::warn("Line {}, Col {}: Failed to parse BipedSlot '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				return std::nullopt;
+			}
+
+			if (parsedValue != 0 && (parsedValue < 30 || parsedValue > 61)) {
+				logger::warn("Line {}, Col {}: Failed to parse BipedSlot '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				return std::nullopt;
+			}
+
+			return static_cast<std::uint32_t>(parsedValue);
+		}
+
+		std::string GetBipedSlots(std::uint32_t a_bipedObjSlots) {
+			std::string retStr;
+			const std::string separator = " | ";
+
+			if (a_bipedObjSlots == 0) {
+				return "0";
+			}
+
+			for (std::size_t ii = 0; ii < 32; ++ii) {
+				if (a_bipedObjSlots & (1 << ii)) {
+					retStr += std::to_string(ii + 30) + separator;
+				}
+			}
+
+			if (!retStr.empty()) {
+				retStr.erase(retStr.size() - separator.size());
+			}
+
+			return retStr;
 		}
 
 		Configs::ConfigReader reader;

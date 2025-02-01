@@ -1,5 +1,6 @@
 #include "Weapons.h"
 
+#include <any>
 #include <regex>
 
 #include "Parsers.h"
@@ -19,15 +20,27 @@ namespace Weapons {
 
 	enum class ElementType {
 		kAmmo,
+		kAttackDelay,
+		kMaxRange,
+		kMinRange,
 		kNPCAddAmmoList,
 		kObjectEffect,
+		kReach,
+		kReloadSpeed,
+		kSpeed,
 	};
 
 	std::string_view ElementTypeToString(ElementType a_value) {
 		switch (a_value) {
 		case ElementType::kAmmo: return "Ammo";
+		case ElementType::kAttackDelay: return "AttackDelay";
+		case ElementType::kMaxRange: return "MaxRange";
+		case ElementType::kMinRange: return "MinRange";
 		case ElementType::kNPCAddAmmoList: return "NPCAddAmmoList";
 		case ElementType::kObjectEffect: return "ObjectEffect";
+		case ElementType::kReach: return "Reach";
+		case ElementType::kReloadSpeed: return "ReloadSpeed";
+		case ElementType::kSpeed: return "Speed";
 		default: return std::string_view{};
 		}
 	}
@@ -36,13 +49,19 @@ namespace Weapons {
 		FilterType Filter;
 		std::string FilterForm;
 		ElementType Element;
-		std::optional<std::string> AssignValue;
+		std::optional<std::any> AssignValue;
 	};
 
 	struct PatchData {
 		std::optional<RE::TESAmmo*> Ammo;
+		std::optional<float> AttackDelay;
+		std::optional<float> MaxRange;
+		std::optional<float> MinRange;
 		std::optional<RE::TESLevItem*> NPCAddAmmoList;
 		std::optional<RE::EnchantmentItem*> ObjectEffect;
+		std::optional<float> Reach;
+		std::optional<float> ReloadSpeed;
+		std::optional<float> Speed;
 	};
 
 	std::vector<Parsers::Statement<ConfigData>> g_configVec;
@@ -54,13 +73,15 @@ namespace Weapons {
 
 	protected:
 		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
-			if (reader.EndOfFile() || reader.Peek().empty())
+			if (reader.EndOfFile() || reader.Peek().empty()) {
 				return std::nullopt;
+			}
 
 			ConfigData configData{};
 
-			if (!ParseFilter(configData))
+			if (!ParseFilter(configData)) {
 				return std::nullopt;
+			}
 
 			auto token = reader.GetToken();
 			if (token != ".") {
@@ -68,11 +89,13 @@ namespace Weapons {
 				return std::nullopt;
 			}
 
-			if (!ParseElement(configData))
+			if (!ParseElement(configData)) {
 				return std::nullopt;
+			}
 
-			if (!ParseAssignment(configData))
+			if (!ParseAssignment(configData)) {
 				return std::nullopt;
+			}
 
 			token = reader.GetToken();
 			if (token != ";") {
@@ -91,15 +114,25 @@ namespace Weapons {
 			case ElementType::kNPCAddAmmoList:
 			case ElementType::kObjectEffect:
 				logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
-					ElementTypeToString(a_configData.Element), a_configData.AssignValue.value());
+					ElementTypeToString(a_configData.Element), std::any_cast<std::string>(a_configData.AssignValue.value()));
+				break;
+			case ElementType::kAttackDelay:
+			case ElementType::kMaxRange:
+			case ElementType::kMinRange:
+			case ElementType::kReach:
+			case ElementType::kReloadSpeed:
+			case ElementType::kSpeed:
+				logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
+					ElementTypeToString(a_configData.Element), std::any_cast<float>(a_configData.AssignValue.value()));
 				break;
 			}
 		}
 
 		bool ParseFilter(ConfigData& a_config) {
 			auto token = reader.GetToken();
-			if (token == "FilterByFormID")
+			if (token == "FilterByFormID") {
 				a_config.Filter = FilterType::kFormID;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid FilterName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -112,8 +145,9 @@ namespace Weapons {
 			}
 
 			auto filterForm = ParseForm();
-			if (!filterForm.has_value())
+			if (!filterForm.has_value()) {
 				return false;
+			}
 
 			a_config.FilterForm = filterForm.value();
 
@@ -128,12 +162,33 @@ namespace Weapons {
 
 		bool ParseElement(ConfigData& a_config) {
 			auto token = reader.GetToken();
-			if (token == "Ammo")
+			if (token == "Ammo") {
 				a_config.Element = ElementType::kAmmo;
-			else if (token == "NPCAddAmmoList")
+			}
+			else if (token == "AttackDelay") {
+				a_config.Element = ElementType::kAttackDelay;
+			}
+			else if (token == "MaxRange") {
+				a_config.Element = ElementType::kMaxRange;
+			}
+			else if (token == "MinRange") {
+				a_config.Element = ElementType::kMinRange;
+			}
+			else if (token == "NPCAddAmmoList") {
 				a_config.Element = ElementType::kNPCAddAmmoList;
-			else if (token == "ObjectEffect")
+			}
+			else if (token == "ObjectEffect") {
 				a_config.Element = ElementType::kObjectEffect;
+			}
+			else if (token == "Reach") {
+				a_config.Element = ElementType::kReach;
+			}
+			else if (token == "ReloadSpeed") {
+				a_config.Element = ElementType::kReloadSpeed;
+			}
+			else if (token == "Speed") {
+				a_config.Element = ElementType::kSpeed;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -152,16 +207,25 @@ namespace Weapons {
 			if (a_config.Element == ElementType::kAmmo || a_config.Element == ElementType::kNPCAddAmmoList || a_config.Element == ElementType::kObjectEffect) {
 				token = reader.Peek();
 				if (token == "null") {
-					reader.GetToken();
-					a_config.AssignValue = "null";
+					a_config.AssignValue = std::any(std::string(reader.GetToken()));
 				}
 				else {
 					auto effectForm = ParseForm();
-					if (!effectForm.has_value())
+					if (!effectForm.has_value()) {
 						return false;
+					}
 
-					a_config.AssignValue = effectForm.value();
+					a_config.AssignValue = std::any(effectForm.value());
 				}
+			}
+			else if (a_config.Element == ElementType::kAttackDelay || a_config.Element == ElementType::kMaxRange || a_config.Element == ElementType::kMinRange ||
+				     a_config.Element == ElementType::kReach || a_config.Element == ElementType::kReloadSpeed || a_config.Element == ElementType::kSpeed) {
+				auto floatValue = ParseNumber();
+				if (!floatValue.has_value()) {
+					return false;
+				}
+
+				a_config.AssignValue = std::any(floatValue.value());
 			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid Assignment to {}.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
@@ -180,17 +244,20 @@ namespace Weapons {
 
 	void ReadConfigs() {
 		const std::filesystem::path configDir{ "Data\\" + std::string(Version::PROJECT) + "\\Weapon" };
-		if (!std::filesystem::exists(configDir))
+		if (!std::filesystem::exists(configDir)) {
 			return;
+		}
 
 		const std::regex filter(".*\\.cfg", std::regex_constants::icase);
 		const std::filesystem::directory_iterator dir_iter(configDir);
 		for (auto& iter : dir_iter) {
-			if (!std::filesystem::is_regular_file(iter.status()))
+			if (!std::filesystem::is_regular_file(iter.status())) {
 				continue;
+			}
 
-			if (!std::regex_match(iter.path().filename().string(), filter))
+			if (!std::regex_match(iter.path().filename().string(), filter)) {
 				continue;
+			}
 
 			std::string path = iter.path().string();
 			logger::info("=========== Reading Weapon config file: {} ===========", path);
@@ -214,45 +281,52 @@ namespace Weapons {
 			}
 
 			if (a_configData.Element == ElementType::kAmmo) {
-				if (!a_configData.AssignValue.has_value())
-					return;
+				std::string formStr = std::any_cast<std::string>(a_configData.AssignValue.value());
 
-				if (a_configData.AssignValue.value() == "null") {
+				if (formStr == "null") {
 					g_patchMap[weap].Ammo = nullptr;
 				}
 				else {
-					RE::TESForm* ammoForm = Utils::GetFormFromString(a_configData.AssignValue.value());
+					RE::TESForm* ammoForm = Utils::GetFormFromString(formStr);
 					if (!ammoForm) {
-						logger::warn("Invalid Form: '{}'.", a_configData.AssignValue.value());
+						logger::warn("Invalid Form: '{}'.", formStr);
 						return;
 					}
 
 					RE::TESAmmo* ammo = ammoForm->As<RE::TESAmmo>();
 					if (!ammo) {
-						logger::warn("'{}' is not an Ammo.", a_configData.AssignValue.value());
+						logger::warn("'{}' is not an Ammo.", formStr);
 						return;
 					}
 
 					g_patchMap[weap].Ammo = ammo;
 				}
 			}
+			else if (a_configData.Element == ElementType::kAttackDelay) {
+				g_patchMap[weap].AttackDelay = std::any_cast<float>(a_configData.AssignValue.value());
+			}
+			else if (a_configData.Element == ElementType::kMaxRange) {
+				g_patchMap[weap].MaxRange = std::any_cast<float>(a_configData.AssignValue.value());
+			}
+			else if (a_configData.Element == ElementType::kMinRange) {
+				g_patchMap[weap].MinRange = std::any_cast<float>(a_configData.AssignValue.value());
+			}
 			else if (a_configData.Element == ElementType::kNPCAddAmmoList) {
-				if (!a_configData.AssignValue.has_value())
-					return;
+				std::string formStr = std::any_cast<std::string>(a_configData.AssignValue.value());
 
-				if (a_configData.AssignValue.value() == "null") {
+				if (formStr == "null") {
 					g_patchMap[weap].NPCAddAmmoList = nullptr;
 				}
 				else {
-					RE::TESForm* levItemForm = Utils::GetFormFromString(a_configData.AssignValue.value());
+					RE::TESForm* levItemForm = Utils::GetFormFromString(formStr);
 					if (!levItemForm) {
-						logger::warn("Invalid Form: '{}'.", a_configData.AssignValue.value());
+						logger::warn("Invalid Form: '{}'.", formStr);
 						return;
 					}
 
 					RE::TESLevItem* levItem = levItemForm->As<RE::TESLevItem>();
 					if (!levItem) {
-						logger::warn("'{}' is not a Leveled Item.", a_configData.AssignValue.value());
+						logger::warn("'{}' is not a Leveled Item.", formStr);
 						return;
 					}
 
@@ -260,37 +334,47 @@ namespace Weapons {
 				}
 			}
 			else if (a_configData.Element == ElementType::kObjectEffect) {
-				if (!a_configData.AssignValue.has_value())
-					return;
+				std::string formStr = std::any_cast<std::string>(a_configData.AssignValue.value());
 
-				if (a_configData.AssignValue.value() == "null") {
+				if (formStr == "null") {
 					g_patchMap[weap].ObjectEffect = nullptr;
 				}
 				else {
-					RE::TESForm* effectForm = Utils::GetFormFromString(a_configData.AssignValue.value());
+					RE::TESForm* effectForm = Utils::GetFormFromString(formStr);
 					if (!effectForm) {
-						logger::warn("Invalid Form: '{}'.", a_configData.AssignValue.value());
+						logger::warn("Invalid Form: '{}'.", formStr);
 						return;
 					}
 
 					RE::EnchantmentItem* objectEffect = effectForm->As<RE::EnchantmentItem>();
 					if (!objectEffect) {
-						logger::warn("'{}' is not an Object Effect.", a_configData.AssignValue.value());
+						logger::warn("'{}' is not an Object Effect.", formStr);
 						return;
 					}
 
 					g_patchMap[weap].ObjectEffect = objectEffect;
 				}
 			}
+			else if (a_configData.Element == ElementType::kReach) {
+				g_patchMap[weap].Reach = std::any_cast<float>(a_configData.AssignValue.value());
+			}
+			else if (a_configData.Element == ElementType::kReloadSpeed) {
+				g_patchMap[weap].ReloadSpeed = std::any_cast<float>(a_configData.AssignValue.value());
+			}
+			else if (a_configData.Element == ElementType::kSpeed) {
+				g_patchMap[weap].Speed = std::any_cast<float>(a_configData.AssignValue.value());
+			}
 		}
 	}
 
 	void Prepare(const std::vector<Parsers::Statement<ConfigData>>& a_configVec) {
 		for (const auto& configData : a_configVec) {
-			if (configData.Type == Parsers::StatementType::kExpression)
+			if (configData.Type == Parsers::StatementType::kExpression) {
 				Prepare(configData.ExpressionStatement.value());
-			else if (configData.Type == Parsers::StatementType::kConditional)
+			}
+			else if (configData.Type == Parsers::StatementType::kConditional) {
 				Prepare(configData.ConditionalStatement->Evaluates());
+			}
 		}
 	}
 
@@ -305,12 +389,33 @@ namespace Weapons {
 		logger::info("======================== Start patching for Weapon ========================");
 
 		for (const auto& patchData : g_patchMap) {
-			if (patchData.second.Ammo.has_value())
+			if (patchData.second.Ammo.has_value()) {
 				patchData.first->weaponData.ammo = patchData.second.Ammo.value();
-			if (patchData.second.NPCAddAmmoList.has_value())
+			}
+			if (patchData.second.AttackDelay.has_value()) {
+				patchData.first->weaponData.attackDelaySec = patchData.second.AttackDelay.value();
+			}
+			if (patchData.second.MaxRange.has_value()) {
+				patchData.first->weaponData.maxRange = patchData.second.MaxRange.value();
+			}
+			if (patchData.second.MinRange.has_value()) {
+				patchData.first->weaponData.minRange = patchData.second.MinRange.value();
+			}
+			if (patchData.second.NPCAddAmmoList.has_value()) {
 				patchData.first->weaponData.npcAddAmmoList = patchData.second.NPCAddAmmoList.value();
-			if (patchData.second.ObjectEffect.has_value())
+			}
+			if (patchData.second.ObjectEffect.has_value()) {
 				patchData.first->formEnchanting = patchData.second.ObjectEffect.value();
+			}
+			if (patchData.second.Reach.has_value()) {
+				patchData.first->weaponData.reach = patchData.second.Reach.value();
+			}
+			if (patchData.second.ReloadSpeed.has_value()) {
+				patchData.first->weaponData.reloadSpeed = patchData.second.ReloadSpeed.value();
+			}
+			if (patchData.second.Speed.has_value()) {
+				patchData.first->weaponData.speed = patchData.second.Speed.value();
+			}
 		}
 
 		logger::info("======================== Finished patching for Weapon ========================");

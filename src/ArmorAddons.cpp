@@ -175,47 +175,6 @@ namespace ArmorAddons {
 
 			return true;
 		}
-
-		std::optional<std::uint32_t> ParseBipedSlot() {
-			unsigned long parsedValue;
-
-			auto token = reader.GetToken();
-			if (token.empty() || token == "|" || token == ";") {
-				logger::warn("Line {}, Col {}: Expected BipedSlot '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-				return std::nullopt;
-			}
-
-			auto parsingResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-			if (parsingResult.ec != std::errc()) {
-				logger::warn("Line {}, Col {}: Failed to parse bipedSlot '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-				return std::nullopt;
-			}
-
-			if (parsedValue != 0 && (parsedValue < 30 || parsedValue > 61)) {
-				logger::warn("Line {}, Col {}: Failed to parse bipedSlot '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-				return std::nullopt;
-			}
-
-			return static_cast<std::uint32_t>(parsedValue);
-		}
-
-		std::string GetBipedSlots(std::uint32_t a_bipedObjSlots) {
-			std::string retStr;
-			std::string separtor = " | ";
-
-			if (a_bipedObjSlots == 0)
-				return "0";
-
-			for (std::size_t ii = 0; ii < 32; ii++) {
-				if (a_bipedObjSlots & (1 << ii))
-					retStr += std::to_string(ii + 30) + separtor;
-			}
-
-			if (retStr.empty())
-				return retStr;
-
-			return retStr.substr(0, retStr.size() - separtor.size());
-		}
 	};
 
 	void ReadConfig(std::string_view a_path) {
