@@ -3,13 +3,13 @@ F4SE Plugin for Fallout 4
 
 ## Requirements
 * Building
-    * Microsoft Visual Studio 2019 or later
+    * Microsoft Visual Studio 2022
     * CMake 3.20 or later
     * vcpkg
 * Installation
     * [F4SE](http://f4se.silverlock.org/)
     * [Address Library](https://www.nexusmods.com/fallout4/mods/47327)
-    * [64-bit Visual C++ 2019/2022 Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+    * [64-bit Visual C++ 2022 Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe)
 
 ## Building
 ```
