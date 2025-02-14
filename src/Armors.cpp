@@ -3,10 +3,13 @@
 #include <regex>
 #include <any>
 
+#include "ConfigUtils.h"
 #include "Parsers.h"
 #include "Utils.h"
 
 namespace Armors {
+	constexpr std::string_view TypeName = "Armor";
+
 	enum class FilterType {
 		kFormID
 	};
@@ -509,34 +512,8 @@ namespace Armors {
 		}
 	};
 
-	void ReadConfig(std::string_view a_path) {
-		ArmorParser parser(a_path);
-		auto parsedStatements = parser.Parse();
-		g_configVec.insert(g_configVec.end(), parsedStatements.begin(), parsedStatements.end());
-	}
-
 	void ReadConfigs() {
-		const std::filesystem::path configDir{ "Data\\" + std::string(Version::PROJECT) + "\\Armor" };
-		if (!std::filesystem::exists(configDir)) {
-			return;
-		}
-
-		const std::regex filter(".*\\.cfg", std::regex_constants::icase);
-		const std::filesystem::directory_iterator dir_iter(configDir);
-		for (auto& iter : dir_iter) {
-			if (!std::filesystem::is_regular_file(iter.status())) {
-				continue;
-			}
-
-			if (!std::regex_match(iter.path().filename().string(), filter)) {
-				continue;
-			}
-
-			std::string path = iter.path().string();
-			logger::info("=========== Reading Armor config file: {} ===========", path);
-			ReadConfig(path);
-			logger::info("");
-		}
+		g_configVec = ConfigUtils::ReadConfigs<ArmorParser, Parsers::Statement<ConfigData>>(TypeName);
 	}
 
 	void Prepare(const ConfigData& a_configData) {
@@ -655,17 +632,6 @@ namespace Armors {
 		}
 	}
 
-	void Prepare(const std::vector<Parsers::Statement<ConfigData>>& a_configVec) {
-		for (const auto& configData : a_configVec) {
-			if (configData.Type == Parsers::StatementType::kExpression) {
-				Prepare(configData.ExpressionStatement.value());
-			}
-			else if (configData.Type == Parsers::StatementType::kConditional) {
-				Prepare(configData.ConditionalStatement->Evaluates());
-			}
-		}
-	}
-
 	void PatchKeywords(RE::TESObjectARMO* a_armo, const PatchData::KeywordsData& a_keywordsData) {
 		bool isCleared = false;
 
@@ -727,14 +693,14 @@ namespace Armors {
 	}
 
 	void Patch() {
-		logger::info("======================== Start preparing patch for Armor ========================");
+		logger::info("======================== Start preparing patch for {} ========================", TypeName);
 
-		Prepare(g_configVec);
+		ConfigUtils::Prepare(g_configVec, Prepare);
 
-		logger::info("======================== Finished preparing patch for Armor ========================");
+		logger::info("======================== Finished preparing patch for {} ========================", TypeName);
 		logger::info("");
 
-		logger::info("======================== Start patching for Armor ========================");
+		logger::info("======================== Start patching for {} ========================", TypeName);
 
 		for (const auto& patchData : g_patchMap) {
 			if (patchData.second.ArmorRating.has_value()) {
@@ -757,7 +723,7 @@ namespace Armors {
 			}
 		}
 
-		logger::info("======================== Finished patching for Armor ========================");
+		logger::info("======================== Finished patching for {} ========================", TypeName);
 		logger::info("");
 
 		g_configVec.clear();

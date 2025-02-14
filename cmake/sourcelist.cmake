@@ -35,6 +35,7 @@ set(SOURCES
 	src/Worldspaces.cpp
 	src/Configs.h
 	src/Configs.cpp
+	src/ConfigUtils.h
 	src/Parsers.h
 	src/Parsers.cpp
 	src/Utils.h

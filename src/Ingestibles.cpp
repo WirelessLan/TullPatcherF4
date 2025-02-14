@@ -2,10 +2,13 @@
 
 #include <regex>
 
+#include "ConfigUtils.h"
 #include "Parsers.h"
 #include "Utils.h"
 
 namespace Ingestibles {
+	constexpr std::string_view TypeName = "Ingestible";
+
 	enum class FilterType {
 		kFormID
 	};
@@ -88,13 +91,15 @@ namespace Ingestibles {
 
 	protected:
 		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
-			if (reader.EndOfFile() || reader.Peek().empty())
+			if (reader.EndOfFile() || reader.Peek().empty()) {
 				return std::nullopt;
+			}
 
 			ConfigData configData{};
 
-			if (!ParseFilter(configData))
+			if (!ParseFilter(configData)) {
 				return std::nullopt;
+			}
 
 			auto token = reader.GetToken();
 			if (token != ".") {
@@ -102,8 +107,9 @@ namespace Ingestibles {
 				return std::nullopt;
 			}
 
-			if (!ParseElement(configData))
+			if (!ParseElement(configData)) {
 				return std::nullopt;
+			}
 
 			token = reader.GetToken();
 			if (token != ".") {
@@ -111,8 +117,9 @@ namespace Ingestibles {
 				return std::nullopt;
 			}
 
-			if (!ParseOperation(configData))
+			if (!ParseOperation(configData)) {
 				return std::nullopt;
+			}
 
 			while (true) {
 				token = reader.Peek();
@@ -127,8 +134,9 @@ namespace Ingestibles {
 					return std::nullopt;
 				}
 
-				if (!ParseOperation(configData))
+				if (!ParseOperation(configData)) {
 					return std::nullopt;
+				}
 			}
 
 			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
@@ -158,8 +166,9 @@ namespace Ingestibles {
 						break;
 					}
 
-					if (ii == a_configData.Operations.size() - 1)
+					if (ii == a_configData.Operations.size() - 1) {
 						opLog += ";";
+					}
 
 					logger::info("{}    {}", indent, opLog);
 				}
@@ -169,8 +178,9 @@ namespace Ingestibles {
 
 		bool ParseFilter(ConfigData& a_configData) {
 			auto token = reader.GetToken();
-			if (token == "FilterByFormID")
+			if (token == "FilterByFormID") {
 				a_configData.Filter = FilterType::kFormID;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid FilterName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -183,8 +193,9 @@ namespace Ingestibles {
 			}
 
 			auto filterForm = ParseForm();
-			if (!filterForm.has_value())
+			if (!filterForm.has_value()) {
 				return false;
+			}
 
 			a_configData.FilterForm = filterForm.value();
 
@@ -199,8 +210,9 @@ namespace Ingestibles {
 
 		bool ParseElement(ConfigData& a_configData) {
 			auto token = reader.GetToken();
-			if (token == "Effects")
+			if (token == "Effects") {
 				a_configData.Element = ElementType::kEffects;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -213,12 +225,15 @@ namespace Ingestibles {
 			OperationType opType;
 
 			auto token = reader.GetToken();
-			if (token == "Clear")
+			if (token == "Clear") {
 				opType = OperationType::kClear;
-			else if (token == "Add")
+			}
+			else if (token == "Add") {
 				opType = OperationType::kAdd;
-			else if (token == "Delete")
+			}
+			else if (token == "Delete") {
 				opType = OperationType::kDelete;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -246,8 +261,9 @@ namespace Ingestibles {
 					newOp.OpEffectData = ConfigData::Operation::EffectData{};
 
 					std::optional<std::string> opForm = ParseForm();
-					if (!opForm.has_value())
+					if (!opForm.has_value()) {
 						return false;
+					}
 
 					newOp.OpEffectData->EffectForm = opForm.value();
 
@@ -345,31 +361,8 @@ namespace Ingestibles {
 		}
 	};
 
-	void ReadConfig(std::string_view a_path) {
-		IngestibleParser parser(a_path);
-		auto parsedStatements = parser.Parse();
-		g_configVec.insert(g_configVec.end(), parsedStatements.begin(), parsedStatements.end());
-	}
-
 	void ReadConfigs() {
-		const std::filesystem::path configDir{ "Data\\" + std::string(Version::PROJECT) + "\\Ingestible" };
-		if (!std::filesystem::exists(configDir))
-			return;
-
-		const std::regex filter(".*\\.cfg", std::regex_constants::icase);
-		const std::filesystem::directory_iterator dir_iter(configDir);
-		for (auto& iter : dir_iter) {
-			if (!std::filesystem::is_regular_file(iter.status()))
-				continue;
-
-			if (!std::regex_match(iter.path().filename().string(), filter))
-				continue;
-
-			std::string path = iter.path().string();
-			logger::info("=========== Reading Ingestible config file: {} ===========", path);
-			ReadConfig(path);
-			logger::info("");
-		}
+		g_configVec = ConfigUtils::ReadConfigs<IngestibleParser, Parsers::Statement<ConfigData>>(TypeName);
 	}
 
 	void Prepare(const ConfigData& a_configData) {
@@ -389,8 +382,9 @@ namespace Ingestibles {
 			PatchData& patchData = g_patchMap[ingestibleForm];
 
 			if (a_configData.Element == ElementType::kEffects) {
-				if (!patchData.Effects.has_value())
+				if (!patchData.Effects.has_value()) {
 					patchData.Effects = PatchData::EffectsData{};
+				}
 
 				for (const auto& op : a_configData.Operations) {
 					if (op.OpType == OperationType::kClear) {
@@ -409,48 +403,46 @@ namespace Ingestibles {
 							continue;
 						}
 
-						if (op.OpType == OperationType::kAdd)
+						if (op.OpType == OperationType::kAdd) {
 							patchData.Effects->AddEffectVec.push_back({ effectSetting, op.OpEffectData->Magnitude, op.OpEffectData->Area, op.OpEffectData->Duration });
-						else
+						}
+						else {
 							patchData.Effects->DeleteEffectVec.push_back({ effectSetting, op.OpEffectData->Magnitude, op.OpEffectData->Area, op.OpEffectData->Duration });
+						}
 					}
 				}
 			}
 		}
 	}
 
-	void Prepare(const std::vector<Parsers::Statement<ConfigData>>& a_configVec) {
-		for (const auto& configData : a_configVec) {
-			if (configData.Type == Parsers::StatementType::kExpression)
-				Prepare(configData.ExpressionStatement.value());
-			else if (configData.Type == Parsers::StatementType::kConditional)
-				Prepare(configData.ConditionalStatement->Evaluates());
-		}
-	}
-
 	std::vector<RE::EffectItem*> GetEffects(RE::AlchemyItem* a_alchemyItem) {
 		std::vector<RE::EffectItem*> retVec;
 
-		if (!a_alchemyItem || a_alchemyItem->listOfEffects.empty())
+		if (!a_alchemyItem || a_alchemyItem->listOfEffects.empty()) {
 			return retVec;
+		}
 
-		for (auto efItem : a_alchemyItem->listOfEffects)
+		for (auto efItem : a_alchemyItem->listOfEffects) {
 			retVec.push_back(efItem);
+		}
 
 		return retVec;
 	}
 
 	void SetEffects(RE::AlchemyItem* a_alchemyItem, const std::vector<RE::EffectItem*>& a_effects) {
-		if (!a_alchemyItem)
+		if (!a_alchemyItem) {
 			return;
+		}
 
 		a_alchemyItem->listOfEffects.clear();
 
-		if (a_effects.empty())
+		if (a_effects.empty()) {
 			return;
+		}
 
-		for (auto effItem : a_effects)
+		for (auto effItem : a_effects) {
 			a_alchemyItem->listOfEffects.push_back(effItem);
+		}
 	}
 
 	RE::EffectItem* AllocEffect(const PatchData::EffectsData::Effect& a_effect) {
@@ -473,8 +465,9 @@ namespace Ingestibles {
 	}
 
 	void FreeEffect(RE::EffectItem* a_item) {
-		if (!a_item)
+		if (!a_item) {
 			return;
+		}
 
 		RE::MemoryManager mm = RE::MemoryManager::GetSingleton();
 		mm.Deallocate(a_item, false);
@@ -484,11 +477,13 @@ namespace Ingestibles {
 		bool isCleared = false, isDeleted = false, isAdded = false;
 
 		std::vector<RE::EffectItem*> effectsVec = GetEffects(a_alchemyItem);
+
 		// Clear
 		if (a_effectsData.Clear) {
 			isCleared = true;
-			for (auto effItem : effectsVec)
+			for (auto effItem : effectsVec) {
 				FreeEffect(effItem);
+			}
 			effectsVec.clear();
 		}
 
@@ -499,9 +494,10 @@ namespace Ingestibles {
 			for (const auto& delEffect : a_effectsData.DeleteEffectVec) {
 				for (auto it = effectsVec.begin(); it != effectsVec.end(); it++) {
 					RE::EffectItem* effItem = *it;
-					if (delEffect.BaseEffect != effItem->effectSetting || delEffect.Magnitude != effItem->data.magnitude
-						|| delEffect.Area != static_cast<std::uint32_t>(effItem->data.area) || delEffect.Duration != static_cast<std::uint32_t>(effItem->data.duration))
+					if (delEffect.BaseEffect != effItem->effectSetting || delEffect.Magnitude != effItem->data.magnitude ||
+						delEffect.Area != static_cast<std::uint32_t>(effItem->data.area) || delEffect.Duration != static_cast<std::uint32_t>(effItem->data.duration)) {
 						continue;
+					}
 
 					effectsVec.erase(it);
 					FreeEffect(effItem);
@@ -509,43 +505,48 @@ namespace Ingestibles {
 				}
 			}
 
-			if (preSize != effectsVec.size())
+			if (preSize != effectsVec.size()) {
 				isDeleted = true;
+			}
 		}
 
 		// Add
 		if (!a_effectsData.AddEffectVec.empty()) {
 			for (const auto& addEffect : a_effectsData.AddEffectVec) {
 				RE::EffectItem* newEffItem = AllocEffect(addEffect);
-				if (newEffItem)
+				if (newEffItem) {
 					effectsVec.push_back(newEffItem);
+				}
 			}
 			isAdded = true;
 		}
 
-		if (isCleared || isDeleted || isAdded)
+		if (isCleared || isDeleted || isAdded) {
 			SetEffects(a_alchemyItem, effectsVec);
+		}
 	}
 
 	void Patch(RE::AlchemyItem* a_alchemyItem, const PatchData& a_patchData) {
-		if (a_patchData.Effects.has_value())
+		if (a_patchData.Effects.has_value()) {
 			PatchEffects(a_alchemyItem, a_patchData.Effects.value());
+		}
 	}
 
 	void Patch() {
-		logger::info("======================== Start preparing patch for Ingestible ========================");
+		logger::info("======================== Start preparing patch for {} ========================", TypeName);
 
-		Prepare(g_configVec);
+		ConfigUtils::Prepare(g_configVec, Prepare);
 
-		logger::info("======================== Finished preparing patch for Ingestible ========================");
+		logger::info("======================== Finished preparing patch for {} ========================", TypeName);
 		logger::info("");
 
-		logger::info("======================== Start patching for Ingestible ========================");
+		logger::info("======================== Start patching for {} ========================", TypeName);
 
-		for (const auto& patchData : g_patchMap)
+		for (const auto& patchData : g_patchMap) {
 			Patch(patchData.first, patchData.second);
+		}
 
-		logger::info("======================== Finished patching for Ingestible ========================");
+		logger::info("======================== Finished patching for {} ========================", TypeName);
 		logger::info("");
 
 		g_configVec.clear();

@@ -3,10 +3,13 @@
 #include <unordered_set>
 #include <regex>
 
+#include "ConfigUtils.h"
 #include "Parsers.h"
 #include "Utils.h"
 
 namespace Locations {
+	constexpr std::string_view TypeName = "Location";
+
 	enum class FilterType {
 		kFormID
 	};
@@ -82,13 +85,15 @@ namespace Locations {
 
 	protected:
 		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
-			if (reader.EndOfFile() || reader.Peek().empty())
+			if (reader.EndOfFile() || reader.Peek().empty()) {
 				return std::nullopt;
+			}
 
 			ConfigData configData{};
 
-			if (!ParseFilter(configData))
+			if (!ParseFilter(configData)) {
 				return std::nullopt;
+			}
 
 			auto token = reader.GetToken();
 			if (token != ".") {
@@ -96,13 +101,15 @@ namespace Locations {
 				return std::nullopt;
 			}
 
-			if (!ParseElement(configData))
+			if (!ParseElement(configData)) {
 				return std::nullopt;
+			}
 
 			token = reader.Peek();
 			if (token == "=") {
-				if (!ParseAssignment(configData))
+				if (!ParseAssignment(configData)) {
 					return std::nullopt;
+				}
 
 				token = reader.GetToken();
 				if (token != ";") {
@@ -117,8 +124,9 @@ namespace Locations {
 					return std::nullopt;
 				}
 
-				if (!ParseOperation(configData))
+				if (!ParseOperation(configData)) {
 					return std::nullopt;
+				}
 
 				while (true) {
 					token = reader.Peek();
@@ -133,8 +141,9 @@ namespace Locations {
 						return std::nullopt;
 					}
 
-					if (!ParseOperation(configData))
+					if (!ParseOperation(configData)) {
 						return std::nullopt;
+					}
 				}
 			}
 
@@ -156,8 +165,9 @@ namespace Locations {
 					std::string opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType),
 						a_configData.Operations[ii].OpForm.has_value() ? a_configData.Operations[ii].OpForm.value() : "");
 
-					if (ii == a_configData.Operations.size() - 1)
+					if (ii == a_configData.Operations.size() - 1) {
 						opLog += ";";
+					}
 
 					logger::info("{}    {}", indent, opLog);
 				}
@@ -167,8 +177,9 @@ namespace Locations {
 
 		bool ParseFilter(ConfigData& a_configData) {
 			auto token = reader.GetToken();
-			if (token == "FilterByFormID")
+			if (token == "FilterByFormID") {
 				a_configData.Filter = FilterType::kFormID;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid FilterName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -181,8 +192,9 @@ namespace Locations {
 			}
 
 			auto filterForm = ParseForm();
-			if (!filterForm.has_value())
+			if (!filterForm.has_value()) {
 				return false;
+			}
 
 			a_configData.FilterForm = filterForm.value();
 
@@ -197,10 +209,12 @@ namespace Locations {
 
 		bool ParseElement(ConfigData& a_configData) {
 			auto token = reader.GetToken();
-			if (token == "FullName")
+			if (token == "FullName") {
 				a_configData.Element = ElementType::kFullName;
-			else if (token == "Keywords")
+			}
+			else if (token == "Keywords") {
 				a_configData.Element = ElementType::kKeywords;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -237,14 +251,18 @@ namespace Locations {
 			OperationType opType;
 
 			auto token = reader.GetToken();
-			if (token == "Clear")
+			if (token == "Clear") {
 				opType = OperationType::kClear;
-			else if (token == "Add")
+			}
+			else if (token == "Add") {
 				opType = OperationType::kAdd;
-			else if (token == "AddIfNotExists")
+			}
+			else if (token == "AddIfNotExists") {
 				opType = OperationType::kAddIfNotExists;
-			else if (token == "Delete")
+			}
+			else if (token == "Delete") {
 				opType = OperationType::kDelete;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -259,8 +277,9 @@ namespace Locations {
 			std::optional<std::string> opData;
 			if (opType != OperationType::kClear) {
 				opData = ParseForm();
-				if (!opData.has_value())
+				if (!opData.has_value()) {
 					return false;
+				}
 			}
 
 			token = reader.GetToken();
@@ -275,31 +294,8 @@ namespace Locations {
 		}
 	};
 
-	void ReadConfig(std::string_view a_path) {
-		LocationParser parser(a_path);
-		auto parsedStatements = parser.Parse();
-		g_configVec.insert(g_configVec.end(), parsedStatements.begin(), parsedStatements.end());
-	}
-
 	void ReadConfigs() {
-		const std::filesystem::path configDir{ "Data\\" + std::string(Version::PROJECT) + "\\Location" };
-		if (!std::filesystem::exists(configDir))
-			return;
-
-		const std::regex filter(".*\\.cfg", std::regex_constants::icase);
-		const std::filesystem::directory_iterator dir_iter(configDir);
-		for (auto& iter : dir_iter) {
-			if (!std::filesystem::is_regular_file(iter.status()))
-				continue;
-
-			if (!std::regex_match(iter.path().filename().string(), filter))
-				continue;
-
-			std::string path = iter.path().string();
-			logger::info("=========== Reading Location config file: {} ===========", path);
-			ReadConfig(path);
-			logger::info("");
-		}
+		g_configVec = ConfigUtils::ReadConfigs<LocationParser, Parsers::Statement<ConfigData>>(TypeName);
 	}
 
 	void Prepare(const ConfigData& a_configData) {
@@ -322,8 +318,9 @@ namespace Locations {
 				patchData.FullName = a_configData.AssignValue.value();
 			}
 			else if (a_configData.Element == ElementType::kKeywords) {
-				if (!patchData.Keywords.has_value())
+				if (!patchData.Keywords.has_value()) {
 					patchData.Keywords = PatchData::KeywordsData{};
+				}
 
 				for (const auto& op : a_configData.Operations) {
 					if (op.OpType == OperationType::kClear) {
@@ -342,39 +339,36 @@ namespace Locations {
 							continue;
 						}
 
-						if (op.OpType == OperationType::kAdd)
+						if (op.OpType == OperationType::kAdd) {
 							patchData.Keywords->AddKeywordVec.push_back(keywordForm);
-						else if (op.OpType == OperationType::kAddIfNotExists)
+						}
+						else if (op.OpType == OperationType::kAddIfNotExists) {
 							patchData.Keywords->AddUniqueKeywordSet.insert(keywordForm);
-						else
+						}
+						else {
 							patchData.Keywords->DeleteKeywordVec.push_back(keywordForm);
+						}
 					}
 				}
 			}
 		}
 	}
 
-	void Prepare(const std::vector<Parsers::Statement<ConfigData>>& a_configVec) {
-		for (const auto& configData : a_configVec) {
-			if (configData.Type == Parsers::StatementType::kExpression)
-				Prepare(configData.ExpressionStatement.value());
-			else if (configData.Type == Parsers::StatementType::kConditional)
-				Prepare(configData.ConditionalStatement->Evaluates());
-		}
-	}
-
 	void ClearKeywords(RE::BGSLocation* a_location) {
-		if (!a_location)
+		if (!a_location) {
 			return;
+		}
 
-		while (a_location->numKeywords > 0)
+		while (a_location->numKeywords > 0) {
 			a_location->RemoveKeyword(a_location->keywords[0]);
+		}
 	}
 
 	bool KeywordExists(RE::BGSLocation* a_location, RE::BGSKeyword* a_keyword) {
 		for (std::uint32_t ii = 0; ii < a_location->numKeywords; ii++) {
-			if (a_location->keywords[ii] == a_keyword)
+			if (a_location->keywords[ii] == a_keyword) {
 				return true;
+			}
 		}
 		return false;
 	}
@@ -392,51 +386,58 @@ namespace Locations {
 		if (!isCleared && !a_keywordsData.DeleteKeywordVec.empty()) {
 			std::vector<RE::BGSKeyword*> delVec;
 			for (const auto& delKywd : a_keywordsData.DeleteKeywordVec) {
-				if (KeywordExists(a_location, delKywd))
+				if (KeywordExists(a_location, delKywd)) {
 					delVec.push_back(delKywd);
+				}
 			}
 
-			for (auto kywd : delVec)
+			for (auto kywd : delVec) {
 				a_location->RemoveKeyword(kywd);
+			}
 		}
 
 		// Add
 		if (!a_keywordsData.AddKeywordVec.empty()) {
-			for (const auto& addKywd : a_keywordsData.AddKeywordVec)
+			for (const auto& addKywd : a_keywordsData.AddKeywordVec) {
 				a_location->AddKeyword(addKywd);
+			}
 		}
 
 		// Add if not exists
 		if (!a_keywordsData.AddUniqueKeywordSet.empty()) {
 			for (const auto& addKywd : a_keywordsData.AddUniqueKeywordSet) {
-				if (!KeywordExists(a_location, addKywd))
+				if (!KeywordExists(a_location, addKywd)) {
 					a_location->AddKeyword(addKywd);
+				}
 			}
 		}
 	}
 
 	void Patch(RE::BGSLocation* a_location, const PatchData& a_patchData) {
-		if (a_patchData.FullName.has_value())
+		if (a_patchData.FullName.has_value()) {
 			a_location->fullName = a_patchData.FullName.value();
+		}
 
-		if (a_patchData.Keywords.has_value())
+		if (a_patchData.Keywords.has_value()) {
 			PatchKeywords(a_location, a_patchData.Keywords.value());
+		}
 	}
 
 	void Patch() {
-		logger::info("======================== Start preparing patch for Location ========================");
+		logger::info("======================== Start preparing patch for {} ========================", TypeName);
 
-		Prepare(g_configVec);
+		ConfigUtils::Prepare(g_configVec, Prepare);
 
-		logger::info("======================== Finished preparing patch for Location ========================");
+		logger::info("======================== Finished preparing patch for {} ========================", TypeName);
 		logger::info("");
 
-		logger::info("======================== Start patching for Location ========================");
+		logger::info("======================== Start patching for {} ========================", TypeName);
 
-		for (const auto& patchData : g_patchMap)
+		for (const auto& patchData : g_patchMap) {
 			Patch(patchData.first, patchData.second);
+		}
 
-		logger::info("======================== Finished patching for Location ========================");
+		logger::info("======================== Finished patching for {} ========================", TypeName);
 		logger::info("");
 
 		g_configVec.clear();

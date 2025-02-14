@@ -4,10 +4,13 @@
 #include <regex>
 #include <any>
 
+#include "ConfigUtils.h"
 #include "Parsers.h"
 #include "Utils.h"
 
 namespace Races {
+	constexpr std::string_view TypeName = "Race";
+
 	enum class FilterType {
 		kFormID
 	};
@@ -116,13 +119,15 @@ namespace Races {
 
 	protected:
 		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
-			if (reader.EndOfFile() || reader.Peek().empty())
+			if (reader.EndOfFile() || reader.Peek().empty()) {
 				return std::nullopt;
+			}
 
 			ConfigData configData{};
 
-			if (!ParseFilter(configData))
+			if (!ParseFilter(configData)) {
 				return std::nullopt;
+			}
 
 			auto token = reader.GetToken();
 			if (token != ".") {
@@ -130,13 +135,15 @@ namespace Races {
 				return std::nullopt;
 			}
 
-			if (!ParseElement(configData))
+			if (!ParseElement(configData)) {
 				return std::nullopt;
+			}
 
 			token = reader.Peek();
 			if (token == "=") {
-				if (!ParseAssignment(configData))
+				if (!ParseAssignment(configData)) {
 					return std::nullopt;
+				}
 
 				token = reader.GetToken();
 				if (token != ";") {
@@ -151,8 +158,9 @@ namespace Races {
 					return std::nullopt;
 				}
 
-				if (!ParseOperation(configData))
+				if (!ParseOperation(configData)) {
 					return std::nullopt;
+				}
 
 				while (true) {
 					token = reader.Peek();
@@ -167,8 +175,9 @@ namespace Races {
 						return std::nullopt;
 					}
 
-					if (!ParseOperation(configData))
+					if (!ParseOperation(configData)) {
 						return std::nullopt;
+					}
 				}
 			}
 
@@ -212,8 +221,9 @@ namespace Races {
 						break;
 					}
 
-					if (ii == a_configData.Operations.size() - 1)
+					if (ii == a_configData.Operations.size() - 1) {
 						opLog += ";";
+					}
 
 					logger::info("{}    {}", indent, opLog);
 				}
@@ -238,8 +248,9 @@ namespace Races {
 						break;
 					}
 
-					if (ii == a_configData.Operations.size() - 1)
+					if (ii == a_configData.Operations.size() - 1) {
 						opLog += ";";
+					}
 
 					logger::info("{}    {}", indent, opLog);
 				}
@@ -255,8 +266,9 @@ namespace Races {
 
 		bool ParseFilter(ConfigData& a_config) {
 			auto token = reader.GetToken();
-			if (token == "FilterByFormID")
+			if (token == "FilterByFormID") {
 				a_config.Filter = FilterType::kFormID;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid FilterName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -269,8 +281,9 @@ namespace Races {
 			}
 
 			auto filterForm = ParseForm();
-			if (!filterForm.has_value())
+			if (!filterForm.has_value()) {
 				return false;
+			}
 
 			a_config.FilterForm = filterForm.value();
 
@@ -285,20 +298,27 @@ namespace Races {
 
 		bool ParseElement(ConfigData& a_config) {
 			auto token = reader.GetToken();
-			if (token == "MaleSkeletalModel")
+			if (token == "MaleSkeletalModel") {
 				a_config.Element = ElementType::kMaleSkeletalModel;
-			else if (token == "FemaleSkeletalModel")
+			}
+			else if (token == "FemaleSkeletalModel") {
 				a_config.Element = ElementType::kFemaleSkeletalModel;
-			else if (token == "BodyPartData")
+			}
+			else if (token == "BodyPartData") {
 				a_config.Element = ElementType::kBodyPartData;
-			else if (token == "BipedObjectSlots")
+			}
+			else if (token == "BipedObjectSlots") {
 				a_config.Element = ElementType::kBipedObjectSlots;
-			else if (token == "Properties")
+			}
+			else if (token == "Properties") {
 				a_config.Element = ElementType::kProperties;
-			else if (token == "MalePresets")
+			}
+			else if (token == "MalePresets") {
 				a_config.Element = ElementType::kMalePresets;
-			else if (token == "FemalePresets")
+			}
+			else if (token == "FemalePresets") {
 				a_config.Element = ElementType::kFemalePresets;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -330,8 +350,9 @@ namespace Races {
 			}
 			else if (a_config.Element == ElementType::kBodyPartData) {
 				auto bodyPartDataForm = ParseForm();
-				if (!bodyPartDataForm.has_value())
+				if (!bodyPartDataForm.has_value()) {
 					return false;
+				}
 
 				a_config.AssignValue = std::any(bodyPartDataForm.value());
 			}
@@ -339,16 +360,19 @@ namespace Races {
 				std::uint32_t bipedObjectSlotsValue = 0;
 				
 				auto bipedSlot = ParseBipedSlot();
-				if (!bipedSlot.has_value())
+				if (!bipedSlot.has_value()) {
 					return false;
+				}
 
-				if (bipedSlot.value() != 0)
+				if (bipedSlot.value() != 0) {
 					bipedObjectSlotsValue |= 1 << (bipedSlot.value() - 30);
+				}
 
 				while (true) {
 					token = reader.Peek();
-					if (token == ";")
+					if (token == ";") {
 						break;
+					}
 
 					token = reader.GetToken();
 					if (token != "|") {
@@ -357,11 +381,13 @@ namespace Races {
 					}
 
 					bipedSlot = ParseBipedSlot();
-					if (!bipedSlot.has_value())
+					if (!bipedSlot.has_value()) {
 						return false;
+					}
 
-					if (bipedSlot.value() != 0)
+					if (bipedSlot.value() != 0) {
 						bipedObjectSlotsValue |= 1 << (bipedSlot.value() - 30);
+					}
 				}
 
 				a_config.AssignValue = std::any(bipedObjectSlotsValue);
@@ -378,16 +404,21 @@ namespace Races {
 			ConfigData::Operation newOp;
 
 			auto token = reader.GetToken();
-			if (token == "Clear")
+			if (token == "Clear") {
 				newOp.OpType = OperationType::kClear;
-			else if (token == "Set")
+			}
+			else if (token == "Set") {
 				newOp.OpType = OperationType::kSet;
-			else if (token == "Add")
+			}
+			else if (token == "Add") {
 				newOp.OpType = OperationType::kAdd;
-			else if (token == "AddIfNotExists")
+			}
+			else if (token == "AddIfNotExists") {
 				newOp.OpType = OperationType::kAddIfNotExists;
-			else if (token == "Delete")
+			}
+			else if (token == "Delete") {
 				newOp.OpType = OperationType::kDelete;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -429,8 +460,9 @@ namespace Races {
 
 				if (newOp.OpType != OperationType::kClear) {
 					std::optional<std::string> opForm = ParseForm();
-					if (!opForm.has_value())
+					if (!opForm.has_value()) {
 						return false;
+					}
 
 					newPropData.ActorValueForm = opForm.value();
 
@@ -442,8 +474,9 @@ namespace Races {
 						}
 
 						std::optional<float> opValue = ParseNumber();
-						if (!opValue.has_value())
+						if (!opValue.has_value()) {
 							return false;
+						}
 
 						newPropData.Value = opValue.value();
 					}
@@ -458,8 +491,9 @@ namespace Races {
 			case ElementType::kFemalePresets:
 				if (newOp.OpType != OperationType::kClear) {
 					std::optional<std::string> opForm = ParseForm();
-					if (!opForm.has_value())
+					if (!opForm.has_value()) {
 						return false;
+					}
 
 					newOp.OpData = std::any(opForm.value());
 				}
@@ -479,31 +513,8 @@ namespace Races {
 		}
 	};
 
-	void ReadConfig(std::string_view a_path) {
-		RaceParser parser(a_path);
-		auto parsedStatements = parser.Parse();
-		g_configVec.insert(g_configVec.end(), parsedStatements.begin(), parsedStatements.end());
-	}
-
 	void ReadConfigs() {
-		const std::filesystem::path configDir{ "Data\\" + std::string(Version::PROJECT) + "\\Race" };
-		if (!std::filesystem::exists(configDir))
-			return;
-
-		const std::regex filter(".*\\.cfg", std::regex_constants::icase);
-		const std::filesystem::directory_iterator dir_iter(configDir);
-		for (auto& iter : dir_iter) {
-			if (!std::filesystem::is_regular_file(iter.status()))
-				continue;
-
-			if (!std::regex_match(iter.path().filename().string(), filter))
-				continue;
-
-			std::string path = iter.path().string();
-			logger::info("=========== Reading Race config file: {} ===========", path);
-			ReadConfig(path);
-			logger::info("");
-		}
+		g_configVec = ConfigUtils::ReadConfigs<RaceParser, Parsers::Statement<ConfigData>>(TypeName);
 	}
 
 	void Prepare(const ConfigData& a_configData) {
@@ -521,18 +532,14 @@ namespace Races {
 			}
 
 			if (a_configData.Element == ElementType::kMaleSkeletalModel) {
-				if (a_configData.AssignValue.has_value())
-					g_patchMap[race].MaleSkeletalModel = std::any_cast<std::string>(a_configData.AssignValue.value());
+				g_patchMap[race].MaleSkeletalModel = std::any_cast<std::string>(a_configData.AssignValue.value());
 			}
 			else if (a_configData.Element == ElementType::kFemaleSkeletalModel) {
-				if (a_configData.AssignValue.has_value())
-					g_patchMap[race].FemaleSkeletalModel = std::any_cast<std::string>(a_configData.AssignValue.value());
+				g_patchMap[race].FemaleSkeletalModel = std::any_cast<std::string>(a_configData.AssignValue.value());
 			}
 			else if (a_configData.Element == ElementType::kBodyPartData) {
-				if (!a_configData.AssignValue.has_value())
-					return;
-
 				std::string bodyPartDataFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+
 				RE::TESForm* bodyPartDataForm = Utils::GetFormFromString(bodyPartDataFormStr);
 				if (!bodyPartDataForm) {
 					logger::warn("Invalid Form: '{}'.", bodyPartDataFormStr);
@@ -548,14 +555,14 @@ namespace Races {
 				g_patchMap[race].BodyPartData = bodyPartData;
 			}
 			else if (a_configData.Element == ElementType::kBipedObjectSlots) {
-				if (a_configData.AssignValue.has_value())
-					g_patchMap[race].BipedObjectSlots = std::any_cast<std::uint32_t>(a_configData.AssignValue.value());
+				g_patchMap[race].BipedObjectSlots = std::any_cast<std::uint32_t>(a_configData.AssignValue.value());
 			}
 			else if (a_configData.Element == ElementType::kProperties) {
 				PatchData& patchData = g_patchMap[race];
 
-				if (!patchData.Properties.has_value())
+				if (!patchData.Properties.has_value()) {
 					patchData.Properties = PatchData::PropertiesData{};
+				}
 
 				for (const auto& op : a_configData.Operations) {
 					if (op.OpType == OperationType::kClear) {
@@ -575,18 +582,21 @@ namespace Races {
 							continue;
 						}
 
-						if (op.OpType == OperationType::kSet)
+						if (op.OpType == OperationType::kSet) {
 							patchData.Properties->SetPropertyVec.push_back({ avInfo, propData.Value });
-						else
+						}
+						else {
 							patchData.Properties->DeletePropertyVec.push_back({ avInfo, 0 });
+						}
 					}
 				}
 			}
 			else if (a_configData.Element == ElementType::kMalePresets) {
 				PatchData& patchData = g_patchMap[race];
 
-				if (!patchData.MalePresets.has_value())
+				if (!patchData.MalePresets.has_value()) {
 					patchData.MalePresets = PatchData::PresetsData{};
+				}
 
 				for (const auto& op : a_configData.Operations) {
 					if (op.OpType == OperationType::kClear) {
@@ -607,20 +617,24 @@ namespace Races {
 							continue;
 						}
 
-						if (op.OpType == OperationType::kAdd)
+						if (op.OpType == OperationType::kAdd) {
 							patchData.MalePresets->AddPresetVec.push_back(presetNPC);
-						else if (op.OpType == OperationType::kAddIfNotExists)
+						}
+						else if (op.OpType == OperationType::kAddIfNotExists) {
 							patchData.MalePresets->AddUniquePresetSet.insert(presetNPC);
-						else
+						}
+						else {
 							patchData.MalePresets->DeletePresetVec.push_back(presetNPC);
+						}
 					}
 				}
 			}
 			else if (a_configData.Element == ElementType::kFemalePresets) {
 				PatchData& patchData = g_patchMap[race];
 
-				if (!patchData.FemalePresets.has_value())
+				if (!patchData.FemalePresets.has_value()) {
 					patchData.FemalePresets = PatchData::PresetsData{};
+				}
 
 				for (const auto& op : a_configData.Operations) {
 					if (op.OpType == OperationType::kClear) {
@@ -641,43 +655,40 @@ namespace Races {
 							continue;
 						}
 
-						if (op.OpType == OperationType::kAdd)
+						if (op.OpType == OperationType::kAdd) {
 							patchData.FemalePresets->AddPresetVec.push_back(presetNPC);
-						else if (op.OpType == OperationType::kAddIfNotExists)
+						}
+						else if (op.OpType == OperationType::kAddIfNotExists) {
 							patchData.FemalePresets->AddUniquePresetSet.insert(presetNPC);
-						else
+						}
+						else {
 							patchData.FemalePresets->DeletePresetVec.push_back(presetNPC);
+						}
 					}
 				}
 			}
 		}
 	}
 
-	void Prepare(const std::vector<Parsers::Statement<ConfigData>>& a_configVec) {
-		for (const auto& configData : a_configVec) {
-			if (configData.Type == Parsers::StatementType::kExpression)
-				Prepare(configData.ExpressionStatement.value());
-			else if (configData.Type == Parsers::StatementType::kConditional)
-				Prepare(configData.ConditionalStatement->Evaluates());
-		}
-	}
-
 	void PatchProperties(RE::TESRace* a_race, const PatchData::PropertiesData& a_propertiesData) {
-		if (!a_race->properties)
+		if (!a_race->properties) {
 			return;
+		}
 
 		bool isCleared = false;
 
 		// Clear
-		if (a_propertiesData.Clear)
+		if (a_propertiesData.Clear) {
 			a_race->properties->clear();
+		}
 
 		// Delete
 		if (!isCleared) {
 			for (const auto& delProp : a_propertiesData.DeletePropertyVec) {
 				for (auto it = a_race->properties->begin(); it != a_race->properties->end(); it++) {
-					if (delProp.ActorValue != it->first)
+					if (delProp.ActorValue != it->first) {
 						continue;
+					}
 
 					a_race->properties->erase(it);
 					break;
@@ -690,16 +701,18 @@ namespace Races {
 			bool found = false;
 
 			for (auto& raceProp : *a_race->properties) {
-				if (setProp.ActorValue != raceProp.first)
+				if (setProp.ActorValue != raceProp.first) {
 					continue;
+				}
 
 				found = true;
 				raceProp.second.f = setProp.Value;
 				break;
 			}
 
-			if (found)
+			if (found) {
 				continue;
+			}
 
 			RE::BSTTuple<RE::TESForm*, RE::BGSTypedFormValuePair::SharedVal> nTup;
 			nTup.first = setProp.ActorValue;
@@ -710,21 +723,24 @@ namespace Races {
 	}
 
 	void PatchPresets(RE::TESRace* a_race, std::uint8_t a_sex, const PatchData::PresetsData& a_presetsData) {
-		if (!a_race->faceRelatedData[a_sex])
+		if (!a_race->faceRelatedData[a_sex]) {
 			return;
+		}
 
 		bool isCleared = false;
 
 		// Clear
-		if (a_presetsData.Clear)
+		if (a_presetsData.Clear) {
 			a_race->faceRelatedData[a_sex]->presetNPCs->clear();
+		}
 
 		// Delete
 		if (!isCleared) {
 			for (const auto& delPreset : a_presetsData.DeletePresetVec) {
 				for (auto it = a_race->faceRelatedData[a_sex]->presetNPCs->begin(); it != a_race->faceRelatedData[a_sex]->presetNPCs->end(); it++) {
-					if (delPreset != *it)
+					if (delPreset != *it) {
 						continue;
+					}
 
 					a_race->faceRelatedData[a_sex]->presetNPCs->erase(it);
 					break;
@@ -740,52 +756,61 @@ namespace Races {
 			bool found = false;
 
 			for (const auto& preset : *a_race->faceRelatedData[a_sex]->presetNPCs) {
-				if (preset != uniqPreset)
+				if (preset != uniqPreset) {
 					continue;
+				}
 
 				found = true;
 				break;
 			}
 
-			if (!found)
+			if (!found) {
 				a_race->faceRelatedData[a_sex]->presetNPCs->push_back(uniqPreset);
+			}
 		}
 	}
 
 	void Patch() {
-		logger::info("======================== Start preparing patch for Race ========================");
+		logger::info("======================== Start preparing patch for {} ========================", TypeName);
 
-		Prepare(g_configVec);
+		ConfigUtils::Prepare(g_configVec, Prepare);
 
-		logger::info("======================== Finished preparing patch for Race ========================");
+		logger::info("======================== Finished preparing patch for {} ========================", TypeName);
 		logger::info("");
 
-		logger::info("======================== Start patching for Race ========================");
+		logger::info("======================== Start patching for {} ========================", TypeName);
 
 		for (const auto& patchData : g_patchMap) {
-			if (patchData.second.MaleSkeletalModel.has_value())
+			if (patchData.second.MaleSkeletalModel.has_value()) {
 				patchData.first->skeletonModel[0].SetModel(patchData.second.MaleSkeletalModel.value().c_str());
+			}
 
-			if (patchData.second.FemaleSkeletalModel.has_value())
+			if (patchData.second.FemaleSkeletalModel.has_value()) {
 				patchData.first->skeletonModel[1].SetModel(patchData.second.FemaleSkeletalModel.value().c_str());
+			}
 
-			if (patchData.second.BodyPartData.has_value())
+			if (patchData.second.BodyPartData.has_value()) {
 				patchData.first->bodyPartData = patchData.second.BodyPartData.value();
+			}
 
-			if (patchData.second.BipedObjectSlots.has_value())
+			if (patchData.second.BipedObjectSlots.has_value()) {
 				patchData.first->bipedModelData.bipedObjectSlots = patchData.second.BipedObjectSlots.value();
+			}
 
-			if (patchData.second.Properties.has_value())
+			if (patchData.second.Properties.has_value()) {
 				PatchProperties(patchData.first, patchData.second.Properties.value());
+			}
 
-			if (patchData.second.MalePresets.has_value())
+			if (patchData.second.MalePresets.has_value()) {
 				PatchPresets(patchData.first, 0, patchData.second.MalePresets.value());
+			}
 
-			if (patchData.second.FemalePresets.has_value())
+			if (patchData.second.FemalePresets.has_value()) {
 				PatchPresets(patchData.first, 1, patchData.second.FemalePresets.value());
+			}
 		}
 
-		logger::info("======================== Finished patching for Race ========================");
+		logger::info("======================== Finished patching for {} ========================", TypeName);
 		logger::info("");
 
 		g_configVec.clear();

@@ -2,10 +2,13 @@
 
 #include <regex>
 
+#include "ConfigUtils.h"
 #include "Parsers.h"
 #include "Utils.h"
 
 namespace DefaultObjectManagers {
+	constexpr std::string_view TypeName = "DefaultObjectManager";
+
 	enum class FilterType {
 		kFormID
 	};
@@ -465,13 +468,15 @@ namespace DefaultObjectManagers {
 
 	protected:
 		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
-			if (reader.EndOfFile() || reader.Peek().empty())
+			if (reader.EndOfFile() || reader.Peek().empty()) {
 				return std::nullopt;
+			}
 
 			ConfigData configData{};
 
-			if (!ParseFilter(configData))
+			if (!ParseFilter(configData)) {
 				return std::nullopt;
+			}
 
 			auto token = reader.GetToken();
 			if (token != ".") {
@@ -479,8 +484,9 @@ namespace DefaultObjectManagers {
 				return std::nullopt;
 			}
 
-			if (!ParseElement(configData))
+			if (!ParseElement(configData)) {
 				return std::nullopt;
+			}
 
 			token = reader.GetToken();
 			if (token != ".") {
@@ -488,8 +494,9 @@ namespace DefaultObjectManagers {
 				return std::nullopt;
 			}
 
-			if (!ParseOperation(configData))
+			if (!ParseOperation(configData)) {
 				return std::nullopt;
+			}
 
 			while (true) {
 				token = reader.Peek();
@@ -504,8 +511,9 @@ namespace DefaultObjectManagers {
 					return std::nullopt;
 				}
 
-				if (!ParseOperation(configData))
+				if (!ParseOperation(configData)) {
 					return std::nullopt;
+				}
 			}
 
 			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
@@ -521,8 +529,9 @@ namespace DefaultObjectManagers {
 					std::string opLog = fmt::format(".{}({}, {})", OperationTypeToString(a_configData.Operations[ii].OpType),
 						a_configData.Operations[ii].OpData->Use, a_configData.Operations[ii].OpData->ObjectID);
 
-					if (ii == a_configData.Operations.size() - 1)
+					if (ii == a_configData.Operations.size() - 1) {
 						opLog += ";";
+					}
 
 					logger::info("{}    {}", indent, opLog);
 				}
@@ -532,8 +541,9 @@ namespace DefaultObjectManagers {
 
 		bool ParseFilter(ConfigData& a_configData) {
 			auto token = reader.GetToken();
-			if (token == "FilterByFormID")
+			if (token == "FilterByFormID") {
 				a_configData.Filter = FilterType::kFormID;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid FilterName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -546,8 +556,9 @@ namespace DefaultObjectManagers {
 			}
 
 			auto filterForm = ParseForm();
-			if (!filterForm.has_value())
+			if (!filterForm.has_value()) {
 				return false;
+			}
 
 			a_configData.FilterForm = filterForm.value();
 
@@ -562,8 +573,9 @@ namespace DefaultObjectManagers {
 
 		bool ParseElement(ConfigData& a_configData) {
 			auto token = reader.GetToken();
-			if (token == "Objects")
+			if (token == "Objects") {
 				a_configData.Element = ElementType::kObjects;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -577,8 +589,9 @@ namespace DefaultObjectManagers {
 			ConfigData::Operation::ObjectData objData;
 
 			auto token = reader.GetToken();
-			if (token == "Set")
+			if (token == "Set") {
 				opType = OperationType::kSet;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -605,8 +618,9 @@ namespace DefaultObjectManagers {
 			}
 			else {
 				std::optional<std::string> form = ParseForm();
-				if (!form.has_value())
+				if (!form.has_value()) {
 					return false;
+				}
 
 				objData.ObjectID = form.value();
 			}
@@ -623,31 +637,8 @@ namespace DefaultObjectManagers {
 		}
 	};
 
-	void ReadConfig(std::string_view a_path) {
-		DefaultObjectManagerParser parser(a_path);
-		auto parsedStatements = parser.Parse();
-		g_configVec.insert(g_configVec.end(), parsedStatements.begin(), parsedStatements.end());
-	}
-
 	void ReadConfigs() {
-		const std::filesystem::path configDir{ "Data\\" + std::string(Version::PROJECT) + "\\DefaultObjectManager" };
-		if (!std::filesystem::exists(configDir))
-			return;
-
-		const std::regex filter(".*\\.cfg", std::regex_constants::icase);
-		const std::filesystem::directory_iterator dir_iter(configDir);
-		for (auto& iter : dir_iter) {
-			if (!std::filesystem::is_regular_file(iter.status()))
-				continue;
-
-			if (!std::regex_match(iter.path().filename().string(), filter))
-				continue;
-
-			std::string path = iter.path().string();
-			logger::info("=========== Reading DefaultObjectManager config file: {} ===========", path);
-			ReadConfig(path);
-			logger::info("");
-		}
+		g_configVec = ConfigUtils::ReadConfigs<DefaultObjectManagerParser, Parsers::Statement<ConfigData>>(TypeName);
 	}
 
 	void Prepare(const ConfigData& a_configData) {
@@ -667,8 +658,9 @@ namespace DefaultObjectManagers {
 			PatchData& patchData = g_patchMap[defObjManager];
 
 			if (a_configData.Element == ElementType::kObjects) {
-				if (!patchData.Objects.has_value())
+				if (!patchData.Objects.has_value()) {
 					patchData.Objects = PatchData::ObjectData{};
+				}
 
 				for (const auto& op : a_configData.Operations) {
 					if (op.OpType == OperationType::kSet) {
@@ -678,8 +670,9 @@ namespace DefaultObjectManagers {
 							continue;
 						}
 
-						if (op.OpData->ObjectID == "null")
+						if (op.OpData->ObjectID == "null") {
 							patchData.Objects->SetObjectMap.insert({ it->second, nullptr });
+						}
 						else {
 							RE::TESForm* objForm = Utils::GetFormFromString(op.OpData->ObjectID);
 							if (!objForm) {
@@ -695,39 +688,33 @@ namespace DefaultObjectManagers {
 		}
 	}
 
-	void Prepare(const std::vector<Parsers::Statement<ConfigData>>& a_configVec) {
-		for (const auto& configData : a_configVec) {
-			if (configData.Type == Parsers::StatementType::kExpression)
-				Prepare(configData.ExpressionStatement.value());
-			else if (configData.Type == Parsers::StatementType::kConditional)
-				Prepare(configData.ConditionalStatement->Evaluates());
+	void PatchObject(RE::BGSDefaultObjectManager* a_defObjManager, const PatchData::ObjectData& a_objData) {
+		for (auto objPair : a_objData.SetObjectMap) {
+			a_defObjManager->objectArray[RE::stl::to_underlying(objPair.first)] = objPair.second;
 		}
 	}
 
-	void PatchObject(RE::BGSDefaultObjectManager* a_defObjManager, const PatchData::ObjectData& a_objData) {
-		for (auto objPair : a_objData.SetObjectMap)
-			a_defObjManager->objectArray[RE::stl::to_underlying(objPair.first)] = objPair.second;
-	}
-
 	void Patch(RE::BGSDefaultObjectManager* a_defObjManager, const PatchData& a_patchData) {
-		if (a_patchData.Objects.has_value())
+		if (a_patchData.Objects.has_value()) {
 			PatchObject(a_defObjManager, a_patchData.Objects.value());
+		}
 	}
 
 	void Patch() {
-		logger::info("======================== Start preparing patch for DefaultObjectManager ========================");
+		logger::info("======================== Start preparing patch for {} ========================", TypeName);
 
-		Prepare(g_configVec);
+		ConfigUtils::Prepare(g_configVec, Prepare);
 
-		logger::info("======================== Finished preparing patch for DefaultObjectManager ========================");
+		logger::info("======================== Finished preparing patch for {} ========================", TypeName);
 		logger::info("");
 
-		logger::info("======================== Start patching for DefaultObjectManager ========================");
+		logger::info("======================== Start patching for {} ========================", TypeName);
 
-		for (const auto& patchData : g_patchMap)
+		for (const auto& patchData : g_patchMap) {
 			Patch(patchData.first, patchData.second);
+		}
 
-		logger::info("======================== Finished patching for DefaultObjectManager ========================");
+		logger::info("======================== Finished patching for {} ========================", TypeName);
 		logger::info("");
 
 		g_configVec.clear();

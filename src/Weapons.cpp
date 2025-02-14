@@ -3,10 +3,13 @@
 #include <any>
 #include <regex>
 
+#include "ConfigUtils.h"
 #include "Parsers.h"
 #include "Utils.h"
 
 namespace Weapons {
+	constexpr std::string_view TypeName = "Weapon";
+
 	enum class FilterType {
 		kFormID
 	};
@@ -236,34 +239,8 @@ namespace Weapons {
 		}
 	};
 
-	void ReadConfig(std::string_view a_path) {
-		WeaponParser parser(a_path);
-		auto parsedStatements = parser.Parse();
-		g_configVec.insert(g_configVec.end(), parsedStatements.begin(), parsedStatements.end());
-	}
-
 	void ReadConfigs() {
-		const std::filesystem::path configDir{ "Data\\" + std::string(Version::PROJECT) + "\\Weapon" };
-		if (!std::filesystem::exists(configDir)) {
-			return;
-		}
-
-		const std::regex filter(".*\\.cfg", std::regex_constants::icase);
-		const std::filesystem::directory_iterator dir_iter(configDir);
-		for (auto& iter : dir_iter) {
-			if (!std::filesystem::is_regular_file(iter.status())) {
-				continue;
-			}
-
-			if (!std::regex_match(iter.path().filename().string(), filter)) {
-				continue;
-			}
-
-			std::string path = iter.path().string();
-			logger::info("=========== Reading Weapon config file: {} ===========", path);
-			ReadConfig(path);
-			logger::info("");
-		}
+		g_configVec = ConfigUtils::ReadConfigs<WeaponParser, Parsers::Statement<ConfigData>>(TypeName);
 	}
 
 	void Prepare(const ConfigData& a_configData) {
@@ -367,26 +344,15 @@ namespace Weapons {
 		}
 	}
 
-	void Prepare(const std::vector<Parsers::Statement<ConfigData>>& a_configVec) {
-		for (const auto& configData : a_configVec) {
-			if (configData.Type == Parsers::StatementType::kExpression) {
-				Prepare(configData.ExpressionStatement.value());
-			}
-			else if (configData.Type == Parsers::StatementType::kConditional) {
-				Prepare(configData.ConditionalStatement->Evaluates());
-			}
-		}
-	}
-
 	void Patch() {
-		logger::info("======================== Start preparing patch for Weapon ========================");
+		logger::info("======================== Start preparing patch for {} ========================", TypeName);
 
-		Prepare(g_configVec);
+		ConfigUtils::Prepare(g_configVec, Prepare);
 
-		logger::info("======================== Finished preparing patch for Weapon ========================");
+		logger::info("======================== Finished preparing patch for {} ========================", TypeName);
 		logger::info("");
 
-		logger::info("======================== Start patching for Weapon ========================");
+		logger::info("======================== Start patching for {} ========================", TypeName);
 
 		for (const auto& patchData : g_patchMap) {
 			if (patchData.second.Ammo.has_value()) {
@@ -418,7 +384,7 @@ namespace Weapons {
 			}
 		}
 
-		logger::info("======================== Finished patching for Weapon ========================");
+		logger::info("======================== Finished patching for {} ========================", TypeName);
 		logger::info("");
 
 		g_configVec.clear();

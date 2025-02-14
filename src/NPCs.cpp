@@ -4,10 +4,13 @@
 #include <regex>
 #include <any>
 
+#include "ConfigUtils.h"
 #include "Parsers.h"
 #include "Utils.h"
 
 namespace NPCs {
+	constexpr std::string_view TypeName = "NPC";
+
 	enum class FilterType {
 		kFormID
 	};
@@ -346,8 +349,9 @@ namespace NPCs {
 
 		bool ParseFilter(ConfigData& a_config) {
 			auto token = reader.GetToken();
-			if (token == "FilterByFormID")
+			if (token == "FilterByFormID") {
 				a_config.Filter = FilterType::kFormID;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid FilterName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -761,34 +765,8 @@ namespace NPCs {
 		}
 	};
 
-	void ReadConfig(std::string_view a_path) {
-		NPCParser parser(a_path);
-		auto parsedStatements = parser.Parse();
-		g_configVec.insert(g_configVec.end(), parsedStatements.begin(), parsedStatements.end());
-	}
-
 	void ReadConfigs() {
-		const std::filesystem::path configDir{ "Data\\" + std::string(Version::PROJECT) + "\\NPC" };
-		if (!std::filesystem::exists(configDir)) {
-			return;
-		}
-
-		const std::regex filter(".*\\.cfg", std::regex_constants::icase);
-		const std::filesystem::directory_iterator dir_iter(configDir);
-		for (auto& iter : dir_iter) {
-			if (!std::filesystem::is_regular_file(iter.status())) {
-				continue;
-			}
-
-			if (!std::regex_match(iter.path().filename().string(), filter)) {
-				continue;
-			}
-
-			std::string path = iter.path().string();
-			logger::info("=========== Reading NPC config file: {} ===========", path);
-			ReadConfig(path);
-			logger::info("");
-		}
+		g_configVec = ConfigUtils::ReadConfigs<NPCParser, Parsers::Statement<ConfigData>>(TypeName);
 	}
 
 	void Prepare(const ConfigData& a_configData) {
@@ -1052,28 +1030,17 @@ namespace NPCs {
 		}
 	}
 
-	void Prepare(const std::vector<Parsers::Statement<ConfigData>>& a_configVec) {
-		for (const auto& configData : a_configVec) {
-			if (configData.Type == Parsers::StatementType::kExpression) {
-				Prepare(configData.ExpressionStatement.value());
-			}
-			else if (configData.Type == Parsers::StatementType::kConditional) {
-				Prepare(configData.ConditionalStatement->Evaluates());
-			}
-		}
-	}
-
-	void Prepare() {
+	void PrepareOnce() {
 		if (g_prepared) {
 			return;
 		}
 
-		logger::info("======================== Start preparing patch for NPC ========================");
+		logger::info("======================== Start preparing patch for {} ========================", TypeName);
 
-		Prepare(g_configVec);
+		ConfigUtils::Prepare(g_configVec, Prepare);
 		g_prepared = true;
 
-		logger::info("======================== Finished preparing patch for NPC ========================");
+		logger::info("======================== Finished preparing patch for {} ========================", TypeName);
 		logger::info("");
 	}
 
@@ -1285,7 +1252,7 @@ namespace NPCs {
 		}
 
 		static void ProcessHook(RE::TESNPC& a_npc) {
-			Prepare();
+			PrepareOnce();
 
 			auto it = g_patchMap.find(&a_npc);
 			if (it == g_patchMap.end()) {

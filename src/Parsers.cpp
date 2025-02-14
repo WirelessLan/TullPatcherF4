@@ -4,10 +4,12 @@
 
 namespace Parsers {
 	bool EvaluateCondition(const Condition& a_condition) {
-		if (a_condition.Name == "IsPluginExists")
+		if (a_condition.Name == "IsPluginExists") {
 			return Utils::IsPluginExists(a_condition.Params);
-		else if (a_condition.Name == "IsFormExists")
+		}
+		else if (a_condition.Name == "IsFormExists") {
 			return Utils::GetFormFromString(a_condition.Params) != nullptr;
+		}
 		return false;
 	}
 
@@ -25,8 +27,9 @@ namespace Parsers {
 				}
 				else {
 					while (true) {
-						if (opStack.top().Type == ConditionToken::TokenType::kParenthesis && opStack.top().Operator == "(")
+						if (opStack.top().Type == ConditionToken::TokenType::kParenthesis && opStack.top().Operator == "(") {
 							break;
+						}
 
 						outQueue.push(opStack.top());
 						opStack.pop();
@@ -41,14 +44,14 @@ namespace Parsers {
 					continue;
 				}
 
-				if (opStack.top().Type == ConditionToken::TokenType::kCondition
-				 || opStack.top().Type == ConditionToken::TokenType::kParenthesis) {
+				if (opStack.top().Type == ConditionToken::TokenType::kCondition || 
+					opStack.top().Type == ConditionToken::TokenType::kParenthesis) {
 					opStack.push(conditionToken);
 				}
 				else if (opStack.top().Type == ConditionToken::TokenType::kOperator) {
-					if ((conditionToken.Operator == "&&" && opStack.top().Operator == "||")
-					 || (conditionToken.Operator == "!" && opStack.top().Operator == "&&")
-					 || (conditionToken.Operator == "!" && opStack.top().Operator == "||")) {
+					if ((conditionToken.Operator == "&&" && opStack.top().Operator == "||") ||
+						(conditionToken.Operator == "!" && opStack.top().Operator == "&&") ||
+						(conditionToken.Operator == "!" && opStack.top().Operator == "||")) {
 						opStack.push(conditionToken);
 					}
 					else {
@@ -76,32 +79,38 @@ namespace Parsers {
 			}
 			else if (token.Type == ConditionToken::TokenType::kOperator) {
 				if (token.Operator == "&&" || token.Operator == "||") {
-					const auto& right = evalStack.top();
+					auto right = evalStack.top();
 					evalStack.pop();
-					const auto& left = evalStack.top();
+					auto left = evalStack.top();
 					evalStack.pop();
 
 					if (token.Operator == "&&") {
-						if (left && right)
+						if (left && right) {
 							evalStack.push(true);
-						else
+						}
+						else {
 							evalStack.push(false);
+						}
 					}
 					else if (token.Operator == "||") {
-						if (left || right)
+						if (left || right) {
 							evalStack.push(true);
-						else
+						}
+						else {
 							evalStack.push(false);
+						}
 					}
 				}
 				else if (token.Operator == "!") {
-					const auto& right = evalStack.top();
+					auto right = evalStack.top();
 					evalStack.pop();
 
-					if (!right)
+					if (!right) {
 						evalStack.push(true);
-					else
+					}
+					else {
 						evalStack.push(false);
+					}
 				}
 			}
 		}

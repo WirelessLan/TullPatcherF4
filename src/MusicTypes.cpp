@@ -3,10 +3,13 @@
 #include <regex>
 #include <any>
 
+#include "ConfigUtils.h"
 #include "Parsers.h"
 #include "Utils.h"
 
 namespace MusicTypes {
+	constexpr std::string_view TypeName = "MusicType";
+
 	enum class FilterType {
 		kFormID
 	};
@@ -88,13 +91,15 @@ namespace MusicTypes {
 
 	protected:
 		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
-			if (reader.EndOfFile() || reader.Peek().empty())
+			if (reader.EndOfFile() || reader.Peek().empty()) {
 				return std::nullopt;
+			}
 
 			ConfigData configData{};
 
-			if (!ParseFilter(configData))
+			if (!ParseFilter(configData)) {
 				return std::nullopt;
+			}
 
 			auto token = reader.GetToken();
 			if (token != ".") {
@@ -102,13 +107,15 @@ namespace MusicTypes {
 				return std::nullopt;
 			}
 
-			if (!ParseElement(configData))
+			if (!ParseElement(configData)) {
 				return std::nullopt;
+			}
 
 			token = reader.Peek();
 			if (token == "=") {
-				if (!ParseAssignment(configData))
+				if (!ParseAssignment(configData)) {
 					return std::nullopt;
+				}
 
 				token = reader.GetToken();
 				if (token != ";") {
@@ -123,8 +130,9 @@ namespace MusicTypes {
 					return std::nullopt;
 				}
 
-				if (!ParseOperation(configData))
+				if (!ParseOperation(configData)) {
 					return std::nullopt;
+				}
 
 				while (true) {
 					token = reader.Peek();
@@ -139,8 +147,9 @@ namespace MusicTypes {
 						return std::nullopt;
 					}
 
-					if (!ParseOperation(configData))
+					if (!ParseOperation(configData)) {
 						return std::nullopt;
+					}
 				}
 			}
 
@@ -182,8 +191,9 @@ namespace MusicTypes {
 						break;
 					}
 
-					if (ii == a_configData.Operations.size() - 1)
+					if (ii == a_configData.Operations.size() - 1) {
 						opLog += ";";
+					}
 
 					logger::info("{}    {}", indent, opLog);
 				}
@@ -198,8 +208,9 @@ namespace MusicTypes {
 
 		bool ParseFilter(ConfigData& a_configData) {
 			auto token = reader.GetToken();
-			if (token == "FilterByFormID")
+			if (token == "FilterByFormID") {
 				a_configData.Filter = FilterType::kFormID;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid FilterName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -212,8 +223,9 @@ namespace MusicTypes {
 			}
 
 			auto filterForm = ParseForm();
-			if (!filterForm.has_value())
+			if (!filterForm.has_value()) {
 				return false;
+			}
 
 			a_configData.FilterForm = filterForm.value();
 
@@ -228,16 +240,21 @@ namespace MusicTypes {
 
 		bool ParseElement(ConfigData& a_configData) {
 			auto token = reader.GetToken();
-			if (token == "Ducking")
+			if (token == "Ducking") {
 				a_configData.Element = ElementType::kDucking;
-			else if (token == "FadeDuration")
+			}
+			else if (token == "FadeDuration") {
 				a_configData.Element = ElementType::kFadeDuration;
-			else if (token == "Flags")
+			}
+			else if (token == "Flags") {
 				a_configData.Element = ElementType::kFlags;
-			else if (token == "MusicTracks")
+			}
+			else if (token == "MusicTracks") {
 				a_configData.Element = ElementType::kMusicTracks;
-			else if (token == "Priority")
+			}
+			else if (token == "Priority") {
 				a_configData.Element = ElementType::kPriority;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -330,15 +347,17 @@ namespace MusicTypes {
 				std::uint32_t flagValue = 0;
 
 				auto flag = ParseFlag();
-				if (!flag.has_value())
+				if (!flag.has_value()) {
 					return false;
+				}
 
 				flagValue |= flag.value();
 
 				while (true) {
 					token = reader.Peek();
-					if (token == ";")
+					if (token == ";") {
 						break;
+					}
 
 					token = reader.GetToken();
 					if (token != "|") {
@@ -347,8 +366,9 @@ namespace MusicTypes {
 					}
 
 					flag = ParseFlag();
-					if (!flag.has_value())
+					if (!flag.has_value()) {
 						return false;
+					}
 
 					flagValue |= flag.value();
 				}
@@ -388,12 +408,15 @@ namespace MusicTypes {
 			ConfigData::Operation newOp;
 
 			auto token = reader.GetToken();
-			if (token == "Clear")
+			if (token == "Clear") {
 				newOp.OpType = OperationType::kClear;
-			else if (token == "Add")
+			}
+			else if (token == "Add") {
 				newOp.OpType = OperationType::kAdd;
-			else if (token == "Delete")
+			}
+			else if (token == "Delete") {
 				newOp.OpType = OperationType::kDelete;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -425,8 +448,9 @@ namespace MusicTypes {
 			case ElementType::kMusicTracks:
 				if (newOp.OpType != OperationType::kClear) {
 					std::optional<std::string> form = ParseForm();
-					if (!form.has_value())
+					if (!form.has_value()) {
 						return false;
+					}
 
 					newOp.OpForm = form.value();
 				}
@@ -452,20 +476,27 @@ namespace MusicTypes {
 				return std::nullopt;
 			}
 
-			if (token == "None")
+			if (token == "None") {
 				return 0x0000;
-			else if (token == "PlaysOneSelection")
+			}
+			else if (token == "PlaysOneSelection") {
 				return 0x0001;
-			else if (token == "AbruptTransition")
+			}
+			else if (token == "AbruptTransition") {
 				return 0x0002;
-			else if (token == "CycleTracks")
+			}
+			else if (token == "CycleTracks") {
 				return 0x0004;
-			else if (token == "MaintainTrackOrder")
+			}
+			else if (token == "MaintainTrackOrder") {
 				return 0x0008;
-			else if (token == "DucksCurrentTrack")
+			}
+			else if (token == "DucksCurrentTrack") {
 				return 0x0020;
-			else if (token == "DoesNotQueue")
+			}
+			else if (token == "DoesNotQueue") {
 				return 0x0040;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid flag name '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return std::nullopt;
@@ -476,51 +507,35 @@ namespace MusicTypes {
 			std::string retStr;
 			std::string separtor = " | ";
 
-			if (a_flags & 0x0001)
+			if (a_flags & 0x0001) {
 				retStr += "PlaysOneSelection" + separtor;
-			if (a_flags & 0x0002)
+			}
+			if (a_flags & 0x0002) {
 				retStr += "AbruptTransition" + separtor;
-			if (a_flags & 0x0004)
+			}
+			if (a_flags & 0x0004) {
 				retStr += "CycleTracks" + separtor;
-			if (a_flags & 0x0008)
+			}
+			if (a_flags & 0x0008) {
 				retStr += "MaintainTrackOrder" + separtor;
-			if (a_flags & 0x0020)
+			}
+			if (a_flags & 0x0020) {
 				retStr += "DucksCurrentTrack" + separtor;
-			if (a_flags & 0x0040)
+			}
+			if (a_flags & 0x0040) {
 				retStr += "DoesNotQueue" + separtor;
+			}
 
-			if (retStr.empty())
+			if (retStr.empty()) {
 				return "None";
+			}
 
 			return retStr.substr(0, retStr.size() - separtor.size());
 		}
 	};
 
-	void ReadConfig(std::string_view a_path) {
-		MusicTypeParser parser(a_path);
-		auto parsedStatements = parser.Parse();
-		g_configVec.insert(g_configVec.end(), parsedStatements.begin(), parsedStatements.end());
-	}
-
 	void ReadConfigs() {
-		const std::filesystem::path configDir{ "Data\\" + std::string(Version::PROJECT) + "\\MusicType" };
-		if (!std::filesystem::exists(configDir))
-			return;
-
-		const std::regex filter(".*\\.cfg", std::regex_constants::icase);
-		const std::filesystem::directory_iterator dir_iter(configDir);
-		for (auto& iter : dir_iter) {
-			if (!std::filesystem::is_regular_file(iter.status()))
-				continue;
-
-			if (!std::regex_match(iter.path().filename().string(), filter))
-				continue;
-
-			std::string path = iter.path().string();
-			logger::info("=========== Reading MusicType config file: {} ===========", path);
-			ReadConfig(path);
-			logger::info("");
-		}
+		g_configVec = ConfigUtils::ReadConfigs<MusicTypeParser, Parsers::Statement<ConfigData>>(TypeName);
 	}
 
 	void Prepare(const ConfigData& a_configData) {
@@ -549,8 +564,9 @@ namespace MusicTypes {
 				patchData.Flags = std::any_cast<std::uint32_t>(a_configData.AssignValue.value());
 			}
 			else if (a_configData.Element == ElementType::kMusicTracks) {
-				if (!patchData.MusicTracks.has_value())
+				if (!patchData.MusicTracks.has_value()) {
 					patchData.MusicTracks = PatchData::MusicTracksData{};
+				}
 
 				for (const auto& op : a_configData.Operations) {
 					if (op.OpType == OperationType::kClear) {
@@ -569,25 +585,18 @@ namespace MusicTypes {
 							continue;
 						}
 
-						if (op.OpType == OperationType::kAdd)
+						if (op.OpType == OperationType::kAdd) {
 							patchData.MusicTracks->AddTrackVec.push_back(musicTrack);
-						else
+						}
+						else {
 							patchData.MusicTracks->DeleteTrackVec.push_back(musicTrack);
+						}
 					}
 				}
 			}
 			else if (a_configData.Element == ElementType::kPriority) {
 				patchData.Priority = std::any_cast<std::uint8_t>(a_configData.AssignValue.value());
 			}
-		}
-	}
-
-	void Prepare(const std::vector<Parsers::Statement<ConfigData>>& a_configVec) {
-		for (const auto& configData : a_configVec) {
-			if (configData.Type == Parsers::StatementType::kExpression)
-				Prepare(configData.ExpressionStatement.value());
-			else if (configData.Type == Parsers::StatementType::kConditional)
-				Prepare(configData.ConditionalStatement->Evaluates());
 		}
 	}
 
@@ -607,11 +616,13 @@ namespace MusicTypes {
 			for (const auto& delForm : a_musicTracksData.DeleteTrackVec) {
 				for (auto it = a_musicType->tracks.begin(); it != a_musicType->tracks.end(); it++) {
 					RE::BGSMusicTrackFormWrapper* musicTrack = RE::fallout_cast<RE::BGSMusicTrackFormWrapper*, RE::BSIMusicTrack>(*it);
-					if (!musicTrack)
+					if (!musicTrack) {
 						continue;
+					}
 
-					if (musicTrack != delForm)
+					if (musicTrack != delForm) {
 						continue;
+					}
 
 					a_musicType->tracks.erase(it);
 					break;
@@ -622,40 +633,47 @@ namespace MusicTypes {
 		// Add
 		for (const auto& addForm : a_musicTracksData.AddTrackVec) {
 			RE::BSIMusicTrack* musicTrack = addForm->As<RE::BSIMusicTrack>();
-			if (!musicTrack)
+			if (!musicTrack) {
 				continue;
+			}
 
 			a_musicType->tracks.push_back(musicTrack);
 		}
 	}
 
 	void Patch(RE::BGSMusicType* a_musicType, const PatchData& a_patchData) {
-		if (a_patchData.Ducking.has_value())
+		if (a_patchData.Ducking.has_value()) {
 			a_musicType->ducksOtherMusicBy = a_patchData.Ducking.value();
-		if (a_patchData.FadeDuration.has_value())
+		}
+		if (a_patchData.FadeDuration.has_value()) {
 			a_musicType->fadeTime = a_patchData.FadeDuration.value();
-		if (a_patchData.Flags.has_value())
+		}
+		if (a_patchData.Flags.has_value()) {
 			a_musicType->flags = a_patchData.Flags.value();
-		if (a_patchData.MusicTracks.has_value())
+		}
+		if (a_patchData.MusicTracks.has_value()) {
 			PatchMusicTracks(a_musicType, a_patchData.MusicTracks.value());
-		if (a_patchData.Priority.has_value())
+		}
+		if (a_patchData.Priority.has_value()) {
 			a_musicType->priority = static_cast<std::int8_t>(a_patchData.Priority.value());
+		}
 	}
 
 	void Patch() {
-		logger::info("======================== Start preparing patch for MusicType ========================");
+		logger::info("======================== Start preparing patch for {} ========================", TypeName);
 
-		Prepare(g_configVec);
+		ConfigUtils::Prepare(g_configVec, Prepare);
 
-		logger::info("======================== Finished preparing patch for MusicType ========================");
+		logger::info("======================== Finished preparing patch for {} ========================", TypeName);
 		logger::info("");
 
-		logger::info("======================== Start patching for MusicType ========================");
+		logger::info("======================== Start patching for {} ========================", TypeName);
 
-		for (const auto& patchData : g_patchMap)
+		for (const auto& patchData : g_patchMap) {
 			Patch(patchData.first, patchData.second);
+		}
 
-		logger::info("======================== Finished patching for MusicType ========================");
+		logger::info("======================== Finished patching for {} ========================", TypeName);
 		logger::info("");
 
 		g_configVec.clear();

@@ -2,10 +2,13 @@
 
 #include <regex>
 
+#include "ConfigUtils.h"
 #include "Parsers.h"
 #include "Utils.h"
 
 namespace Cells {
+	constexpr std::string_view TypeName = "Cell";
+
 	enum class FilterType {
 		kFormID
 	};
@@ -48,13 +51,15 @@ namespace Cells {
 
 	protected:
 		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
-			if (reader.EndOfFile() || reader.Peek().empty())
+			if (reader.EndOfFile() || reader.Peek().empty()) {
 				return std::nullopt;
+			}
 
 			ConfigData configData{};
 
-			if (!ParseFilter(configData))
+			if (!ParseFilter(configData)) {
 				return std::nullopt;
+			}
 
 			auto token = reader.GetToken();
 			if (token != ".") {
@@ -62,11 +67,13 @@ namespace Cells {
 				return std::nullopt;
 			}
 
-			if (!ParseElement(configData))
+			if (!ParseElement(configData)) {
 				return std::nullopt;
+			}
 
-			if (!ParseAssignment(configData))
+			if (!ParseAssignment(configData)) {
 				return std::nullopt;
+			}
 
 			token = reader.GetToken();
 			if (token != ";") {
@@ -90,8 +97,9 @@ namespace Cells {
 
 		bool ParseFilter(ConfigData& a_config) {
 			auto token = reader.GetToken();
-			if (token == "FilterByFormID")
+			if (token == "FilterByFormID") {
 				a_config.Filter = FilterType::kFormID;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid FilterName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -104,8 +112,9 @@ namespace Cells {
 			}
 
 			auto filterForm = ParseForm();
-			if (!filterForm.has_value())
+			if (!filterForm.has_value()) {
 				return false;
+			}
 
 			a_config.FilterForm = filterForm.value();
 
@@ -120,8 +129,9 @@ namespace Cells {
 
 		bool ParseElement(ConfigData& a_config) {
 			auto token = reader.GetToken();
-			if (token == "FullName")
+			if (token == "FullName") {
 				a_config.Element = ElementType::kFullName;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -159,31 +169,8 @@ namespace Cells {
 		}
 	};
 
-	void ReadConfig(std::string_view a_path) {
-		CellParser parser(a_path);
-		auto parsedStatements = parser.Parse();
-		g_configVec.insert(g_configVec.end(), parsedStatements.begin(), parsedStatements.end());
-	}
-
 	void ReadConfigs() {
-		const std::filesystem::path configDir{ "Data\\" + std::string(Version::PROJECT) + "\\Cell" };
-		if (!std::filesystem::exists(configDir))
-			return;
-
-		const std::regex filter(".*\\.cfg", std::regex_constants::icase);
-		const std::filesystem::directory_iterator dir_iter(configDir);
-		for (auto& iter : dir_iter) {
-			if (!std::filesystem::is_regular_file(iter.status()))
-				continue;
-
-			if (!std::regex_match(iter.path().filename().string(), filter))
-				continue;
-
-			std::string path = iter.path().string();
-			logger::info("=========== Reading Cell config file: {} ===========", path);
-			ReadConfig(path);
-			logger::info("");
-		}
+		g_configVec = ConfigUtils::ReadConfigs<CellParser, Parsers::Statement<ConfigData>>(TypeName);
 	}
 
 	void Prepare(const ConfigData& a_configData) {
@@ -201,37 +188,28 @@ namespace Cells {
 			}
 
 			if (a_configData.Element == ElementType::kFullName) {
-				if (a_configData.AssignValue.has_value())
-					g_patchMap[cell].FullName = a_configData.AssignValue.value();
+				g_patchMap[cell].FullName = a_configData.AssignValue.value();
 			}
 		}
 	}
 
-	void Prepare(const std::vector<Parsers::Statement<ConfigData>>& a_configVec) {
-		for (const auto& configData : a_configVec) {
-			if (configData.Type == Parsers::StatementType::kExpression)
-				Prepare(configData.ExpressionStatement.value());
-			else if (configData.Type == Parsers::StatementType::kConditional)
-				Prepare(configData.ConditionalStatement->Evaluates());
-		}
-	}
-
 	void Patch() {
-		logger::info("======================== Start preparing patch for Cell ========================");
+		logger::info("======================== Start preparing patch for {} ========================", TypeName);
 
-		Prepare(g_configVec);
+		ConfigUtils::Prepare(g_configVec, Prepare);
 
-		logger::info("======================== Finished preparing patch for Cell ========================");
+		logger::info("======================== Finished preparing patch for {} ========================", TypeName);
 		logger::info("");
 
-		logger::info("======================== Start patching for Cell ========================");
+		logger::info("======================== Start patching for {} ========================", TypeName);
 
 		for (const auto& patchData : g_patchMap) {
-			if (patchData.second.FullName.has_value())
+			if (patchData.second.FullName.has_value()) {
 				patchData.first->fullName = patchData.second.FullName.value();
+			}
 		}
 
-		logger::info("======================== Finished patching for Cell ========================");
+		logger::info("======================== Finished patching for {} ========================", TypeName);
 		logger::info("");
 
 		g_configVec.clear();

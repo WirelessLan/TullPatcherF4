@@ -3,10 +3,13 @@
 #include <unordered_set>
 #include <regex>
 
+#include "ConfigUtils.h"
 #include "Parsers.h"
 #include "Utils.h"
 
 namespace LeveledLists {
+	constexpr std::string_view TypeName = "LeveledList";
+
 	enum class FilterType {
 		kFormID
 	};
@@ -102,13 +105,15 @@ namespace LeveledLists {
 
 	protected:
 		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
-			if (reader.EndOfFile() || reader.Peek().empty())
+			if (reader.EndOfFile() || reader.Peek().empty()) {
 				return std::nullopt;
+			}
 
 			ConfigData configData{};
 
-			if (!ParseFilter(configData))
+			if (!ParseFilter(configData)) {
 				return std::nullopt;
+			}
 
 			auto token = reader.GetToken();
 			if (token != ".") {
@@ -116,13 +121,15 @@ namespace LeveledLists {
 				return std::nullopt;
 			}
 
-			if (!ParseElement(configData))
+			if (!ParseElement(configData)) {
 				return std::nullopt;
+			}
 
 			token = reader.Peek();
 			if (token == "=") {
-				if (!ParseAssignment(configData))
+				if (!ParseAssignment(configData)) {
 					return std::nullopt;
+				}
 
 				token = reader.GetToken();
 				if (token != ";") {
@@ -137,8 +144,9 @@ namespace LeveledLists {
 					return std::nullopt;
 				}
 
-				if (!ParseOperation(configData))
+				if (!ParseOperation(configData)) {
 					return std::nullopt;
+				}
 
 				while (true) {
 					token = reader.Peek();
@@ -153,8 +161,9 @@ namespace LeveledLists {
 						return std::nullopt;
 					}
 
-					if (!ParseOperation(configData))
+					if (!ParseOperation(configData)) {
 						return std::nullopt;
+					}
 				}
 			}
 
@@ -189,8 +198,9 @@ namespace LeveledLists {
 						break;
 					}
 
-					if (ii == a_configData.Operations.size() - 1)
+					if (ii == a_configData.Operations.size() - 1) {
 						opLog += ";";
+					}
 
 					logger::info("{}    {}", indent, opLog);
 				}
@@ -207,8 +217,9 @@ namespace LeveledLists {
 
 		bool ParseFilter(ConfigData& a_configData) {
 			auto token = reader.GetToken();
-			if (token == "FilterByFormID")
+			if (token == "FilterByFormID") {
 				a_configData.Filter = FilterType::kFormID;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid FilterName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -221,8 +232,9 @@ namespace LeveledLists {
 			}
 
 			auto filterForm = ParseForm();
-			if (!filterForm.has_value())
+			if (!filterForm.has_value()) {
 				return false;
+			}
 
 			a_configData.FilterForm = filterForm.value();
 
@@ -237,14 +249,18 @@ namespace LeveledLists {
 
 		bool ParseElement(ConfigData& a_configData) {
 			auto token = reader.GetToken();
-			if (token == "Entries")
+			if (token == "Entries") {
 				a_configData.Element = ElementType::kEntries;
-			else if (token == "ChanceNone")
+			}
+			else if (token == "ChanceNone") {
 				a_configData.Element = ElementType::kChanceNone;
-			else if (token == "MaxCount")
+			}
+			else if (token == "MaxCount") {
 				a_configData.Element = ElementType::kMaxCount;
-			else if (token == "Flags")
+			}
+			else if (token == "Flags") {
 				a_configData.Element = ElementType::kFlags;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -296,14 +312,18 @@ namespace LeveledLists {
 			OperationType opType;
 
 			auto token = reader.GetToken();
-			if (token == "Clear")
+			if (token == "Clear") {
 				opType = OperationType::kClear;
-			else if (token == "Add")
+			}
+			else if (token == "Add") {
 				opType = OperationType::kAdd;
-			else if (token == "Delete")
+			}
+			else if (token == "Delete") {
 				opType = OperationType::kDelete;
-			else if (token == "DeleteAll")
+			}
+			else if (token == "DeleteAll") {
 				opType = OperationType::kDeleteAll;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -355,8 +375,9 @@ namespace LeveledLists {
 					}
 
 					std::optional<std::string> opForm = ParseForm();
-					if (!opForm.has_value())
+					if (!opForm.has_value()) {
 						return false;
+					}
 
 					opData->Form = opForm.value();
 
@@ -412,8 +433,9 @@ namespace LeveledLists {
 				}
 				else if (opType == OperationType::kDeleteAll) {
 					std::optional<std::string> opForm = ParseForm();
-					if (!opForm.has_value())
+					if (!opForm.has_value()) {
 						return false;
+					}
 
 					opData->Form = opForm.value();
 				}
@@ -431,31 +453,8 @@ namespace LeveledLists {
 		}
 	};
 
-	void ReadConfig(std::string_view a_path) {
-		LeveledListParser parser(a_path);
-		auto parsedStatements = parser.Parse();
-		g_configVec.insert(g_configVec.end(), parsedStatements.begin(), parsedStatements.end());
-	}
-
 	void ReadConfigs() {
-		const std::filesystem::path configDir{ "Data\\" + std::string(Version::PROJECT) + "\\LeveledList" };
-		if (!std::filesystem::exists(configDir))
-			return;
-
-		const std::regex filter(".*\\.cfg", std::regex_constants::icase);
-		const std::filesystem::directory_iterator dir_iter(configDir);
-		for (auto& iter : dir_iter) {
-			if (!std::filesystem::is_regular_file(iter.status()))
-				continue;
-
-			if (!std::regex_match(iter.path().filename().string(), filter))
-				continue;
-
-			std::string path = iter.path().string();
-			logger::info("=========== Reading LeveledList config file: {} ===========", path);
-			ReadConfig(path);
-			logger::info("");
-		}
+		g_configVec = ConfigUtils::ReadConfigs<LeveledListParser, Parsers::Statement<ConfigData>>(TypeName);
 	}
 
 	void Prepare(const ConfigData& a_configData) {
@@ -475,8 +474,9 @@ namespace LeveledLists {
 			PatchData& patchData = g_patchMap[leveledList];
 
 			if (a_configData.Element == ElementType::kEntries) {
-				if (!patchData.Entries.has_value())
+				if (!patchData.Entries.has_value()) {
 					patchData.Entries = PatchData::EntriesData{};
+				}
 
 				for (const auto& op : a_configData.Operations) {
 					if (op.OpType == OperationType::kClear) {
@@ -489,47 +489,40 @@ namespace LeveledLists {
 							continue;
 						}
 
-						if (op.OpType == OperationType::kAdd)
+						if (op.OpType == OperationType::kAdd) {
 							patchData.Entries->AddEntryVec.push_back({ op.OpData->Level, opForm, op.OpData->Count, op.OpData->ChanceNone });
-						else if (op.OpType == OperationType::kDelete)
+						}
+						else if (op.OpType == OperationType::kDelete) {
 							patchData.Entries->DeleteEntryVec.push_back({ op.OpData->Level, opForm, op.OpData->Count, op.OpData->ChanceNone });
-						else
+						}
+						else {
 							patchData.Entries->DeleteAllEntrySet.insert(opForm);
+						}
 					}
 				}
 			}
 			else if (a_configData.Element == ElementType::kChanceNone) {
-				if (a_configData.AssignValue.has_value())
-					patchData.ChanceNone = a_configData.AssignValue.value();
+				patchData.ChanceNone = a_configData.AssignValue.value();
 			}
 			else if (a_configData.Element == ElementType::kMaxCount) {
-				if (a_configData.AssignValue.has_value())
-					patchData.MaxCount = a_configData.AssignValue.value();
+				patchData.MaxCount = a_configData.AssignValue.value();
 			}
 			else if (a_configData.Element == ElementType::kFlags) {
-				if (a_configData.AssignValue.has_value())
-					patchData.Flags = a_configData.AssignValue.value();
+				patchData.Flags = a_configData.AssignValue.value();
 			}
-		}
-	}
-
-	void Prepare(const std::vector<Parsers::Statement<ConfigData>>& a_configVec) {
-		for (const auto& configData : a_configVec) {
-			if (configData.Type == Parsers::StatementType::kExpression)
-				Prepare(configData.ExpressionStatement.value());
-			else if (configData.Type == Parsers::StatementType::kConditional)
-				Prepare(configData.ConditionalStatement->Evaluates());
 		}
 	}
 
 	std::vector<RE::LEVELED_OBJECT> GetLeveledListEntries(RE::TESLeveledList* a_leveledList) {
 		std::vector<RE::LEVELED_OBJECT> retVec;
 
-		if (!a_leveledList || !a_leveledList->leveledLists || a_leveledList->baseListCount == 0)
+		if (!a_leveledList || !a_leveledList->leveledLists || a_leveledList->baseListCount == 0) {
 			return retVec;
+		}
 
-		for (std::size_t ii = 0; ii < static_cast<std::uint8_t>(a_leveledList->baseListCount); ii++)
+		for (std::size_t ii = 0; ii < static_cast<std::uint8_t>(a_leveledList->baseListCount); ii++) {
 			retVec.push_back(a_leveledList->leveledLists[ii]);
+		}
 
 		return retVec;
 	}
@@ -545,8 +538,9 @@ namespace LeveledLists {
 	}
 
 	void FreeLeveledListEntries(RE::LEVELED_OBJECT* a_lobj, uint32_t arg2 = 0x3) {
-		if (!a_lobj)
+		if (!a_lobj) {
 			return;
+		}
 
 		using func_t = decltype(&FreeLeveledListEntries);
 		const REL::Relocation<func_t> func{ REL::ID(296092) };
@@ -554,8 +548,9 @@ namespace LeveledLists {
 	}
 
 	void SetLeveledListEntries(RE::TESLeveledList* a_leveledList, const std::vector<RE::LEVELED_OBJECT>& a_entries) {
-		if (!a_leveledList)
+		if (!a_leveledList) {
 			return;
+		}
 
 		if (a_leveledList->leveledLists) {
 			std::uint8_t listCount = static_cast<std::uint8_t>(a_leveledList->baseListCount);
@@ -566,8 +561,9 @@ namespace LeveledLists {
 			a_leveledList->baseListCount = 0;
 		}
 
-		if (a_entries.empty())
+		if (a_entries.empty()) {
 			return;
+		}
 
 		std::size_t entriesCnt = a_entries.size();
 		if (entriesCnt > 0xFF) {
@@ -582,8 +578,9 @@ namespace LeveledLists {
 		}
 
 		newEntries->count = static_cast<std::uint32_t>(entriesCnt);
-		for (std::size_t ii = 0; ii < entriesCnt; ii++)
+		for (std::size_t ii = 0; ii < entriesCnt; ii++) {
 			newEntries->ll[ii] = a_entries[ii];
+		}
 
 		a_leveledList->leveledLists = newEntries->ll;
 		a_leveledList->baseListCount = static_cast<std::int8_t>(entriesCnt);
@@ -595,18 +592,21 @@ namespace LeveledLists {
 		std::vector<RE::LEVELED_OBJECT> leveledListVec;
 
 		// Clear
-		if (a_entriesData.Clear)
+		if (a_entriesData.Clear) {
 			isCleared = true;
-		else
+		}
+		else {
 			leveledListVec = GetLeveledListEntries(a_leveledList);
+		}
 
 		// Delete, DeleteAll
 		if (!isCleared) {
 			// Delete
 			for (const auto& delEntry : a_entriesData.DeleteEntryVec) {
 				for (auto it = leveledListVec.begin(); it != leveledListVec.end(); it++) {
-					if (delEntry.Level != it->level || delEntry.Form != it->form || delEntry.Count != it->count || delEntry.ChanceNone != it->chanceNone)
+					if (delEntry.Level != it->level || delEntry.Form != it->form || delEntry.Count != it->count || delEntry.ChanceNone != it->chanceNone) {
 						continue;
+					}
 
 					leveledListVec.erase(it);
 					isModified = true;
@@ -638,38 +638,44 @@ namespace LeveledLists {
 			return a.level < b.level;
 		});
 
-		if (isCleared || isModified)
+		if (isCleared || isModified) {
 			SetLeveledListEntries(a_leveledList, leveledListVec);
+		}
 	}
 
 	void Patch(RE::TESLeveledList* a_leveledList, const PatchData& a_patchData) {
-		if (a_patchData.Entries.has_value())
+		if (a_patchData.Entries.has_value()) {
 			PatchEntries(a_leveledList, a_patchData.Entries.value());
+		}
 
-		if (a_patchData.ChanceNone.has_value())
+		if (a_patchData.ChanceNone.has_value()) {
 			a_leveledList->chanceNone = static_cast<std::int8_t>(a_patchData.ChanceNone.value());
+		}
 
-		if (a_patchData.MaxCount.has_value())
+		if (a_patchData.MaxCount.has_value()) {
 			a_leveledList->maxUseAllCount = static_cast<std::int8_t>(a_patchData.MaxCount.value());
+		}
 
-		if (a_patchData.ChanceNone.has_value())
+		if (a_patchData.ChanceNone.has_value()) {
 			a_leveledList->llFlags = static_cast<std::int8_t>(a_patchData.Flags.value());
+		}
 	}
 
 	void Patch() {
-		logger::info("======================== Start preparing patch for LeveledList ========================");
+		logger::info("======================== Start preparing patch for {} ========================", TypeName);
 
-		Prepare(g_configVec);
+		ConfigUtils::Prepare(g_configVec, Prepare);
 
-		logger::info("======================== Finished preparing patch for LeveledList ========================");
+		logger::info("======================== Finished preparing patch for {} ========================", TypeName);
 		logger::info("");
 
-		logger::info("======================== Start patching for LeveledList ========================");
+		logger::info("======================== Start patching for {} ========================", TypeName);
 
-		for (const auto& patchData : g_patchMap)
+		for (const auto& patchData : g_patchMap) {
 			Patch(patchData.first, patchData.second);
+		}
 
-		logger::info("======================== Finished patching for LeveledList ========================");
+		logger::info("======================== Finished patching for {} ========================", TypeName);
 		logger::info("");
 
 		g_configVec.clear();

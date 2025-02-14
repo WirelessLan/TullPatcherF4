@@ -2,10 +2,13 @@
 
 #include <regex>
 
+#include "ConfigUtils.h"
 #include "Parsers.h"
 #include "Utils.h"
 
 namespace Outfits {
+	constexpr std::string_view TypeName = "Outfit";
+
 	enum class FilterType {
 		kFormID
 	};
@@ -74,13 +77,15 @@ namespace Outfits {
 
 	protected:
 		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
-			if (reader.EndOfFile() || reader.Peek().empty())
+			if (reader.EndOfFile() || reader.Peek().empty()) {
 				return std::nullopt;
+			}
 
 			ConfigData configData{};
 
-			if (!ParseFilter(configData))
+			if (!ParseFilter(configData)) {
 				return std::nullopt;
+			}
 
 			auto token = reader.GetToken();
 			if (token != ".") {
@@ -88,8 +93,9 @@ namespace Outfits {
 				return std::nullopt;
 			}
 
-			if (!ParseElement(configData))
+			if (!ParseElement(configData)) {
 				return std::nullopt;
+			}
 
 			token = reader.GetToken();
 			if (token != ".") {
@@ -97,8 +103,9 @@ namespace Outfits {
 				return std::nullopt;
 			}
 
-			if (!ParseOperation(configData))
+			if (!ParseOperation(configData)) {
 				return std::nullopt;
+			}
 
 			while (true) {
 				token = reader.Peek();
@@ -113,8 +120,9 @@ namespace Outfits {
 					return std::nullopt;
 				}
 
-				if (!ParseOperation(configData))
+				if (!ParseOperation(configData)) {
 					return std::nullopt;
+				}
 			}
 
 			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
@@ -130,8 +138,9 @@ namespace Outfits {
 					std::string opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType),
 						a_configData.Operations[ii].OpForm.has_value() ? a_configData.Operations[ii].OpForm.value() : "");
 
-					if (ii == a_configData.Operations.size() - 1)
+					if (ii == a_configData.Operations.size() - 1) {
 						opLog += ";";
+					}
 
 					logger::info("{}    {}", indent, opLog);
 				}
@@ -141,8 +150,9 @@ namespace Outfits {
 
 		bool ParseFilter(ConfigData& a_configData) {
 			auto token = reader.GetToken();
-			if (token == "FilterByFormID")
+			if (token == "FilterByFormID") {
 				a_configData.Filter = FilterType::kFormID;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid FilterName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -155,8 +165,9 @@ namespace Outfits {
 			}
 
 			auto filterForm = ParseForm();
-			if (!filterForm.has_value())
+			if (!filterForm.has_value()) {
 				return false;
+			}
 
 			a_configData.FilterForm = filterForm.value();
 
@@ -171,8 +182,9 @@ namespace Outfits {
 
 		bool ParseElement(ConfigData& a_configData) {
 			auto token = reader.GetToken();
-			if (token == "Items")
+			if (token == "Items") {
 				a_configData.Element = ElementType::kItems;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -185,12 +197,15 @@ namespace Outfits {
 			OperationType opType;
 
 			auto token = reader.GetToken();
-			if (token == "Clear")
+			if (token == "Clear") {
 				opType = OperationType::kClear;
-			else if (token == "Add")
+			}
+			else if (token == "Add") {
 				opType = OperationType::kAdd;
-			else if (token == "Delete")
+			}
+			else if (token == "Delete") {
 				opType = OperationType::kDelete;
+			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
@@ -205,8 +220,9 @@ namespace Outfits {
 			std::optional<std::string> opData;
 			if (opType != OperationType::kClear) {
 				opData = ParseForm();
-				if (!opData.has_value())
+				if (!opData.has_value()) {
 					return false;
+				}
 			}
 
 			token = reader.GetToken();
@@ -221,31 +237,8 @@ namespace Outfits {
 		}
 	};
 
-	void ReadConfig(std::string_view a_path) {
-		OutfitParser parser(a_path);
-		auto parsedStatements = parser.Parse();
-		g_configVec.insert(g_configVec.end(), parsedStatements.begin(), parsedStatements.end());
-	}
-
 	void ReadConfigs() {
-		const std::filesystem::path configDir{ "Data\\" + std::string(Version::PROJECT) + "\\Outfit" };
-		if (!std::filesystem::exists(configDir))
-			return;
-
-		const std::regex filter(".*\\.cfg", std::regex_constants::icase);
-		const std::filesystem::directory_iterator dir_iter(configDir);
-		for (auto& iter : dir_iter) {
-			if (!std::filesystem::is_regular_file(iter.status()))
-				continue;
-
-			if (!std::regex_match(iter.path().filename().string(), filter))
-				continue;
-
-			std::string path = iter.path().string();
-			logger::info("=========== Reading Outfit config file: {} ===========", path);
-			ReadConfig(path);
-			logger::info("");
-		}
+		g_configVec = ConfigUtils::ReadConfigs<OutfitParser, Parsers::Statement<ConfigData>>(TypeName);
 	}
 
 	void Prepare(const ConfigData& a_configData) {
@@ -265,8 +258,9 @@ namespace Outfits {
 			PatchData& patchData = g_patchMap[outfit];
 
 			if (a_configData.Element == ElementType::kItems) {
-				if (!patchData.Items.has_value())
+				if (!patchData.Items.has_value()) {
 					patchData.Items = PatchData::ItemsData{};
+				}
 
 				for (const auto& op : a_configData.Operations) {
 					if (op.OpType == OperationType::kClear) {
@@ -284,22 +278,15 @@ namespace Outfits {
 							continue;
 						}
 
-						if (op.OpType == OperationType::kAdd)
+						if (op.OpType == OperationType::kAdd) {
 							patchData.Items->AddFormVec.push_back(opForm);
-						else
+						}
+						else {
 							patchData.Items->DeleteFormVec.push_back(opForm);
+						}
 					}
 				}
 			}
-		}
-	}
-
-	void Prepare(const std::vector<Parsers::Statement<ConfigData>>& a_configVec) {
-		for (const auto& configData : a_configVec) {
-			if (configData.Type == Parsers::StatementType::kExpression)
-				Prepare(configData.ExpressionStatement.value());
-			else if (configData.Type == Parsers::StatementType::kConditional)
-				Prepare(configData.ConditionalStatement->Evaluates());
 		}
 	}
 
@@ -316,8 +303,9 @@ namespace Outfits {
 		if (!isCleared && !a_itemsData.DeleteFormVec.empty()) {
 			for (const auto& delForm : a_itemsData.DeleteFormVec) {
 				for (auto it = a_outfit->outfitItems.begin(); it != a_outfit->outfitItems.end(); it++) {
-					if (*it != delForm)
+					if (*it != delForm) {
 						continue;
+					}
 
 					a_outfit->outfitItems.erase(it);
 					break;
@@ -334,24 +322,26 @@ namespace Outfits {
 	}
 
 	void Patch(RE::BGSOutfit* a_outfit, const PatchData& a_patchData) {
-		if (a_patchData.Items.has_value())
+		if (a_patchData.Items.has_value()) {
 			PatchItems(a_outfit, a_patchData.Items.value());
+		}
 	}
 
 	void Patch() {
-		logger::info("======================== Start preparing patch for Outfit ========================");
+		logger::info("======================== Start preparing patch for {} ========================", TypeName);
 
-		Prepare(g_configVec);
+		ConfigUtils::Prepare(g_configVec, Prepare);
 
-		logger::info("======================== Finished preparing patch for Outfit ========================");
+		logger::info("======================== Finished preparing patch for {} ========================", TypeName);
 		logger::info("");
 
-		logger::info("======================== Start patching for Outfit ========================");
+		logger::info("======================== Start patching for {} ========================", TypeName);
 
-		for (const auto& patchData : g_patchMap)
+		for (const auto& patchData : g_patchMap) {
 			Patch(patchData.first, patchData.second);
+		}
 
-		logger::info("======================== Finished patching for Outfit ========================");
+		logger::info("======================== Finished patching for {} ========================", TypeName);
 		logger::info("");
 
 		g_configVec.clear();
