@@ -4,10 +4,10 @@
 
 namespace Parsers {
 	bool EvaluateCondition(const Condition& a_condition) {
-		if (a_condition.Name == "IsPluginExists") {
+		if (a_condition.Name == PluginExistsConditionName) {
 			return Utils::IsPluginExists(a_condition.Params);
 		}
-		else if (a_condition.Name == "IsFormExists") {
+		else if (a_condition.Name == FormExistsConditionName) {
 			return Utils::GetFormFromString(a_condition.Params) != nullptr;
 		}
 		return false;
@@ -85,32 +85,17 @@ namespace Parsers {
 					evalStack.pop();
 
 					if (token.Operator == "&&") {
-						if (left && right) {
-							evalStack.push(true);
-						}
-						else {
-							evalStack.push(false);
-						}
+						evalStack.push(left && right);
 					}
 					else if (token.Operator == "||") {
-						if (left || right) {
-							evalStack.push(true);
-						}
-						else {
-							evalStack.push(false);
-						}
+						evalStack.push(left || right);
 					}
 				}
 				else if (token.Operator == "!") {
 					auto right = evalStack.top();
 					evalStack.pop();
 
-					if (!right) {
-						evalStack.push(true);
-					}
-					else {
-						evalStack.push(false);
-					}
+					evalStack.push(!right);
 				}
 			}
 		}

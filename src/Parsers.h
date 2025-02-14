@@ -4,6 +4,9 @@
 #include "Utils.h"
 
 namespace Parsers {
+	constexpr std::string_view PluginExistsConditionName = "IsPluginExists";
+	constexpr std::string_view FormExistsConditionName = "IsFormExists";
+
 	struct Condition {
 		enum class ConditionType {
 			kFunction
@@ -359,7 +362,7 @@ namespace Parsers {
 					retVec.push_back(ConditionToken{ ConditionToken::TokenType::kParenthesis, std::nullopt, std::string(token) });
 				}
 				else {
-					if (token == "IsPluginExists" || token == "IsFormExists") {
+					if (token == PluginExistsConditionName || token == FormExistsConditionName) {
 						if (!retVec.empty() && retVec.back().Type != ConditionToken::TokenType::kOperator) {
 							logger::warn("Line {}, Col {}: Syntax error. Operator expected.", reader.GetLastLine(), reader.GetLastLineIndex());
 							return std::vector<ConditionToken>{};
@@ -373,7 +376,7 @@ namespace Parsers {
 							return std::vector<ConditionToken>{};
 						}
 
-						if (conditionName == "IsPluginExists") {
+						if (conditionName == PluginExistsConditionName) {
 							token = reader.GetToken();
 							if (token.empty() || token == ")") {
 								logger::warn("Line {}, Col {}: Syntax error. Plugin name expected.", reader.GetLastLine(), reader.GetLastLineIndex());
@@ -392,7 +395,7 @@ namespace Parsers {
 							std::string pluginName(token.substr(1, token.length() - 2));
 							retVec.push_back(ConditionToken{ ConditionToken::TokenType::kCondition, Condition{ Condition::ConditionType::kFunction, conditionName, pluginName }, std::nullopt });
 						}
-						else if (conditionName == "IsFormExists") {
+						else if (conditionName == FormExistsConditionName) {
 							auto parsedForm = ParseForm();
 							if (!parsedForm.has_value()) {
 								return std::vector<ConditionToken>{};
