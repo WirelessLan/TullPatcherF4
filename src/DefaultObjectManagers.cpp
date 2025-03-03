@@ -70,7 +70,7 @@ namespace DefaultObjectManagers {
 	std::vector<Parsers::Statement<ConfigData>> g_configVec;
 	std::unordered_map<RE::BGSDefaultObjectManager*, PatchData> g_patchMap;
 
-	std::unordered_map<std::string, RE::DEFAULT_OBJECT> g_defaultObjectsMap = {
+	const std::unordered_map<std::string, RE::DEFAULT_OBJECT> g_defaultObjectsMap = {
 		{ "SittingAngleLimit", RE::DEFAULT_OBJECT::kSittingAngleLimit },
 		{ "AllowPlayerShout", RE::DEFAULT_OBJECT::kAllowPlayerShout },
 		{ "Gold", RE::DEFAULT_OBJECT::kGold },

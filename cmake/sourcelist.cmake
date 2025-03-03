@@ -23,6 +23,8 @@ set(SOURCES
 	src/MusicTypes.cpp
 	src/NPCs.h
 	src/NPCs.cpp
+	src/ObjectModifications.h
+	src/ObjectModifications.cpp
 	src/Outfits.h
 	src/Outfits.cpp
 	src/Quests.h
