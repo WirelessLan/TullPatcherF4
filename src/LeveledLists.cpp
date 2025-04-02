@@ -656,7 +656,7 @@ namespace LeveledLists {
 			a_leveledList->maxUseAllCount = static_cast<std::int8_t>(a_patchData.MaxCount.value());
 		}
 
-		if (a_patchData.ChanceNone.has_value()) {
+		if (a_patchData.Flags.has_value()) {
 			a_leveledList->llFlags = static_cast<std::int8_t>(a_patchData.Flags.value());
 		}
 	}

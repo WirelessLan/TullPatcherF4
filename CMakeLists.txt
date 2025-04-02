@@ -27,7 +27,7 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL" CACHE 
 
 project(
 	TullPatcherF4
-	VERSION 0.10.1
+	VERSION 0.10.2
 	LANGUAGES CXX
 )
 
