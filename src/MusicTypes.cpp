@@ -616,16 +616,10 @@ namespace MusicTypes {
 			for (const auto& delForm : a_musicTracksData.DeleteTrackVec) {
 				for (auto it = a_musicType->tracks.begin(); it != a_musicType->tracks.end(); it++) {
 					RE::BGSMusicTrackFormWrapper* musicTrack = RE::fallout_cast<RE::BGSMusicTrackFormWrapper*, RE::BSIMusicTrack>(*it);
-					if (!musicTrack) {
-						continue;
+					if (musicTrack && musicTrack == delForm) {
+						a_musicType->tracks.erase(it);
+						break;
 					}
-
-					if (musicTrack != delForm) {
-						continue;
-					}
-
-					a_musicType->tracks.erase(it);
-					break;
 				}
 			}
 		}
@@ -633,11 +627,9 @@ namespace MusicTypes {
 		// Add
 		for (const auto& addForm : a_musicTracksData.AddTrackVec) {
 			RE::BSIMusicTrack* musicTrack = addForm->As<RE::BSIMusicTrack>();
-			if (!musicTrack) {
-				continue;
+			if (musicTrack) {
+				a_musicType->tracks.push_back(musicTrack);
 			}
-
-			a_musicType->tracks.push_back(musicTrack);
 		}
 	}
 

@@ -446,10 +446,10 @@ namespace Ingestibles {
 	}
 
 	RE::EffectItem* AllocEffect(const PatchData::EffectsData::Effect& a_effect) {
-		RE::MemoryManager mm = RE::MemoryManager::GetSingleton();
+		RE::MemoryManager& mm = RE::MemoryManager::GetSingleton();
 		void* newData = mm.Allocate(sizeof(RE::EffectItem), 0, false);
 		if (!newData) {
-			logger::critical("Failed to allocate the new EffectItem.");
+			logger::critical("Failed to allocate the Ingestible EffectItem.");
 			return nullptr;
 		}
 
@@ -469,8 +469,7 @@ namespace Ingestibles {
 			return;
 		}
 
-		RE::MemoryManager mm = RE::MemoryManager::GetSingleton();
-		mm.Deallocate(a_item, false);
+		RE::MemoryManager::GetSingleton().Deallocate(a_item, false);
 	}
 
 	void PatchEffects(RE::AlchemyItem* a_alchemyItem, const PatchData::EffectsData& a_effectsData) {
@@ -480,45 +479,35 @@ namespace Ingestibles {
 
 		// Clear
 		if (a_effectsData.Clear) {
-			isCleared = true;
 			for (auto effItem : effectsVec) {
 				FreeEffect(effItem);
 			}
 			effectsVec.clear();
+			isCleared = true;
 		}
 
 		// Delete
-		if (!isCleared && !a_effectsData.DeleteEffectVec.empty()) {
-			std::size_t preSize = effectsVec.size();
-
+		if (!isCleared) {
 			for (const auto& delEffect : a_effectsData.DeleteEffectVec) {
 				for (auto it = effectsVec.begin(); it != effectsVec.end(); it++) {
 					RE::EffectItem* effItem = *it;
-					if (delEffect.BaseEffect != effItem->effectSetting || delEffect.Magnitude != effItem->data.magnitude ||
-						delEffect.Area != static_cast<std::uint32_t>(effItem->data.area) || delEffect.Duration != static_cast<std::uint32_t>(effItem->data.duration)) {
-						continue;
+					if (delEffect.BaseEffect == effItem->effectSetting && delEffect.Magnitude == effItem->data.magnitude && delEffect.Area == static_cast<std::uint32_t>(effItem->data.area) && delEffect.Duration == static_cast<std::uint32_t>(effItem->data.duration)) {
+						effectsVec.erase(it);
+						FreeEffect(effItem);
+						isDeleted = true;
+						break;
 					}
-
-					effectsVec.erase(it);
-					FreeEffect(effItem);
-					break;
 				}
-			}
-
-			if (preSize != effectsVec.size()) {
-				isDeleted = true;
 			}
 		}
 
 		// Add
-		if (!a_effectsData.AddEffectVec.empty()) {
-			for (const auto& addEffect : a_effectsData.AddEffectVec) {
-				RE::EffectItem* newEffItem = AllocEffect(addEffect);
-				if (newEffItem) {
-					effectsVec.push_back(newEffItem);
-				}
+		for (const auto& addEffect : a_effectsData.AddEffectVec) {
+			RE::EffectItem* newEffItem = AllocEffect(addEffect);
+			if (newEffItem) {
+				effectsVec.push_back(newEffItem);
+				isAdded = true;
 			}
-			isAdded = true;
 		}
 
 		if (isCleared || isDeleted || isAdded) {

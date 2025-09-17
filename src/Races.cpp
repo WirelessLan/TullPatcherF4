@@ -365,7 +365,7 @@ namespace Races {
 				}
 
 				if (bipedSlot.value() != 0) {
-					bipedObjectSlotsValue |= 1 << (bipedSlot.value() - 30);
+					bipedObjectSlotsValue |= 1u << (bipedSlot.value() - 30);
 				}
 
 				while (true) {
@@ -386,7 +386,7 @@ namespace Races {
 					}
 
 					if (bipedSlot.value() != 0) {
-						bipedObjectSlotsValue |= 1 << (bipedSlot.value() - 30);
+						bipedObjectSlotsValue |= 1u << (bipedSlot.value() - 30);
 					}
 				}
 
@@ -672,10 +672,17 @@ namespace Races {
 
 	void PatchProperties(RE::TESRace* a_race, const PatchData::PropertiesData& a_propertiesData) {
 		if (!a_race->properties) {
-			return;
-		}
+			using alloc_type = std::remove_pointer_t<decltype(a_race->properties)>;
 
-		bool isCleared = false;
+			RE::MemoryManager& mm = RE::MemoryManager::GetSingleton();
+			void* stoage = mm.Allocate(sizeof(alloc_type), 0, false);
+			if (!stoage) {
+				logger::critical("Failed to allocate the Race Properties array.");
+				return;
+			}
+
+			a_race->properties = new (stoage) alloc_type();
+		}
 
 		// Clear
 		if (a_propertiesData.Clear) {
@@ -683,13 +690,9 @@ namespace Races {
 		}
 
 		// Delete
-		if (!isCleared) {
-			for (const auto& delProp : a_propertiesData.DeletePropertyVec) {
-				for (auto it = a_race->properties->begin(); it != a_race->properties->end(); it++) {
-					if (delProp.ActorValue != it->first) {
-						continue;
-					}
-
+		for (const auto& delProp : a_propertiesData.DeletePropertyVec) {
+			for (auto it = a_race->properties->begin(); it != a_race->properties->end(); it++) {
+				if (delProp.ActorValue == it->first) {
 					a_race->properties->erase(it);
 					break;
 				}
@@ -701,33 +704,45 @@ namespace Races {
 			bool found = false;
 
 			for (auto& raceProp : *a_race->properties) {
-				if (setProp.ActorValue != raceProp.first) {
-					continue;
+				if (setProp.ActorValue == raceProp.first) {
+					found = true;
+					raceProp.second.f = setProp.Value;
+					break;
 				}
-
-				found = true;
-				raceProp.second.f = setProp.Value;
-				break;
 			}
 
-			if (found) {
-				continue;
+			if (!found) {
+				a_race->properties->emplace_back(setProp.ActorValue, setProp.Value);
 			}
-
-			RE::BSTTuple<RE::TESForm*, RE::BGSTypedFormValuePair::SharedVal> nTup;
-			nTup.first = setProp.ActorValue;
-			nTup.second.f = setProp.Value;
-
-			a_race->properties->push_back(nTup);
 		}
 	}
 
 	void PatchPresets(RE::TESRace* a_race, std::uint8_t a_sex, const PatchData::PresetsData& a_presetsData) {
 		if (!a_race->faceRelatedData[a_sex]) {
-			return;
+			using alloc_type = std::remove_pointer_t<std::remove_extent_t<decltype(a_race->faceRelatedData)>>;
+
+			RE::MemoryManager& mm = RE::MemoryManager::GetSingleton();
+			void* stoage = mm.Allocate(sizeof(alloc_type), 0, false);
+			if (!stoage) {
+				logger::critical("Failed to allocate the Race FaceRelatedData.");
+				return;
+			}
+
+			a_race->faceRelatedData[a_sex] = ::new (stoage) alloc_type();
 		}
 
-		bool isCleared = false;
+		if (!a_race->faceRelatedData[a_sex]->presetNPCs) {
+			using alloc_type = std::remove_pointer_t<decltype(a_race->faceRelatedData[a_sex]->presetNPCs)>;
+
+			RE::MemoryManager& mm = RE::MemoryManager::GetSingleton();
+			void* stoage = mm.Allocate(sizeof(alloc_type), 0, false);
+			if (!stoage) {
+				logger::critical("Failed to allocate the Race PresetNPCs array.");
+				return;
+			}
+
+			a_race->faceRelatedData[a_sex]->presetNPCs = new (stoage) alloc_type();
+		}
 
 		// Clear
 		if (a_presetsData.Clear) {
@@ -735,13 +750,9 @@ namespace Races {
 		}
 
 		// Delete
-		if (!isCleared) {
-			for (const auto& delPreset : a_presetsData.DeletePresetVec) {
-				for (auto it = a_race->faceRelatedData[a_sex]->presetNPCs->begin(); it != a_race->faceRelatedData[a_sex]->presetNPCs->end(); it++) {
-					if (delPreset != *it) {
-						continue;
-					}
-
+		for (const auto& delPreset : a_presetsData.DeletePresetVec) {
+			for (auto it = a_race->faceRelatedData[a_sex]->presetNPCs->begin(); it != a_race->faceRelatedData[a_sex]->presetNPCs->end(); it++) {
+				if (delPreset == *it) {
 					a_race->faceRelatedData[a_sex]->presetNPCs->erase(it);
 					break;
 				}
@@ -756,12 +767,10 @@ namespace Races {
 			bool found = false;
 
 			for (const auto& preset : *a_race->faceRelatedData[a_sex]->presetNPCs) {
-				if (preset != uniqPreset) {
-					continue;
+				if (preset == uniqPreset) {
+					found = true;
+					break;
 				}
-
-				found = true;
-				break;
 			}
 
 			if (!found) {

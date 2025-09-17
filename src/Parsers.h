@@ -581,7 +581,7 @@ namespace Parsers {
 			}
 
 			for (std::size_t ii = 0; ii < 32; ++ii) {
-				if (a_bipedObjSlots & (1 << ii)) {
+				if (a_bipedObjSlots & (1u << ii)) {
 					retStr += std::to_string(ii + 30) + separator;
 				}
 			}

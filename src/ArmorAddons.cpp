@@ -156,7 +156,7 @@ namespace ArmorAddons {
 				}
 
 				if (bipedSlot.value() != 0) {
-					bipedObjectSlotsValue |= 1 << (bipedSlot.value() - 30);
+					bipedObjectSlotsValue |= 1u << (bipedSlot.value() - 30);
 				}
 
 				while (true) {
@@ -177,7 +177,7 @@ namespace ArmorAddons {
 					}
 
 					if (bipedSlot.value() != 0) {
-						bipedObjectSlotsValue |= 1 << (bipedSlot.value() - 30);
+						bipedObjectSlotsValue |= 1u << (bipedSlot.value() - 30);
 					}
 				}
 

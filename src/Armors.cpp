@@ -346,7 +346,7 @@ namespace Armors {
 				}
 
 				if (bipedSlot.value() != 0) {
-					bipedObjectSlotsValue |= 1 << (bipedSlot.value() - 30);
+					bipedObjectSlotsValue |= 1u << (bipedSlot.value() - 30);
 				}
 
 				while (true) {
@@ -367,7 +367,7 @@ namespace Armors {
 					}
 
 					if (bipedSlot.value() != 0) {
-						bipedObjectSlotsValue |= 1 << (bipedSlot.value() - 30);
+						bipedObjectSlotsValue |= 1u << (bipedSlot.value() - 30);
 					}
 				}
 
@@ -660,23 +660,32 @@ namespace Armors {
 	}
 
 	void PatchResistances(RE::TESObjectARMO* a_armo, const PatchData::ResistancesData& a_resistancesData) {
-		bool isCleared = false;
+		if (!a_armo->armorData.damageTypes) {
+			using alloc_type = std::remove_pointer_t<decltype(a_armo->armorData.damageTypes)>;
 
+			RE::MemoryManager& memoryManager = RE::MemoryManager::GetSingleton();
+			void* storage = memoryManager.Allocate(sizeof(alloc_type), 0, false);
+			if (!storage) {
+				logger::critical("Failed to allocate the Armor Resistances array.");
+				return;
+			}
+
+			a_armo->armorData.damageTypes = ::new (storage) alloc_type();
+		}
+
+		// Clear
 		if (a_resistancesData.Clear) {
 			a_armo->armorData.damageTypes->clear();
-			isCleared = true;
 		}
 
 		// Delete
-		if (!isCleared) {
-			for (const auto& resistance : a_resistancesData.DeleteResistanceVec) {
-				auto iter = std::find_if(a_armo->armorData.damageTypes->begin(), a_armo->armorData.damageTypes->end(), [&resistance](const RE::BSTTuple<RE::TESForm*, RE::BGSTypedFormValuePair::SharedVal>& a_elem) {
-					return a_elem.first == resistance.DamageType;
-				});
+		for (const auto& resistance : a_resistancesData.DeleteResistanceVec) {
+			auto iter = std::find_if(a_armo->armorData.damageTypes->begin(), a_armo->armorData.damageTypes->end(), [&resistance](const RE::BSTTuple<RE::TESForm*, RE::BGSTypedFormValuePair::SharedVal>& a_elem) {
+				return a_elem.first == resistance.DamageType;
+			});
 
-				if (iter != a_armo->armorData.damageTypes->end()) {
-					a_armo->armorData.damageTypes->erase(iter);
-				}
+			if (iter != a_armo->armorData.damageTypes->end()) {
+				a_armo->armorData.damageTypes->erase(iter);
 			}
 		}
 

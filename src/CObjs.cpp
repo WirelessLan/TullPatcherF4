@@ -676,17 +676,13 @@ namespace CObjs {
 	}
 
 	void SetCategoryKeywords(RE::BGSConstructibleObject* a_cobjForm, std::unordered_set<std::uint16_t> a_keywordIndexSet) {
-		if (!a_cobjForm) {
-			return;
-		}
-
 		if (!a_keywordIndexSet.empty() && (!a_cobjForm->filterKeywords.array || a_cobjForm->filterKeywords.size < a_keywordIndexSet.size())) {
-			RE::MemoryManager& mm = RE::MemoryManager::GetSingleton();
+			using alloc_type = std::remove_pointer_t<decltype(a_cobjForm->filterKeywords.array)>;
 
-			std::size_t newSize = sizeof(std::uint16_t) * a_keywordIndexSet.size();
-			RE::BGSTypedKeywordValue<RE::KeywordType::kRecipeFilter>* newArray = (RE::BGSTypedKeywordValue<RE::KeywordType::kRecipeFilter>*)mm.Allocate(newSize, 0, false);
-			if (!newArray) {
-				logger::critical("Failed to allocate the new Category Keywords array.");
+			RE::MemoryManager& mm = RE::MemoryManager::GetSingleton();
+			void* storage = mm.Allocate(sizeof(alloc_type) * a_keywordIndexSet.size(), 0, false);
+			if (!storage) {
+				logger::critical("Failed to allocate the ConstructibleObject CategoryKeywords array.");
 				return;
 			}
 
@@ -694,7 +690,7 @@ namespace CObjs {
 				mm.Deallocate(a_cobjForm->filterKeywords.array, false);
 			}
 
-			a_cobjForm->filterKeywords.array = newArray;
+			a_cobjForm->filterKeywords.array = new (storage) alloc_type[a_keywordIndexSet.size()];
 			a_cobjForm->filterKeywords.size = 0;
 		}
 
@@ -703,19 +699,17 @@ namespace CObjs {
 			return;
 		}
 
-		std::uint32_t ii = 0;
+		std::uint32_t idx = 0;
 		for (const auto keywordIndex : a_keywordIndexSet) {
 			RE::BGSTypedKeywordValue<RE::KeywordType::kRecipeFilter> newValue{ keywordIndex };
-			a_cobjForm->filterKeywords.array[ii] = newValue;
-			ii++;
+			a_cobjForm->filterKeywords.array[idx] = newValue;
+			idx++;
 		}
-
-		a_cobjForm->filterKeywords.size = ii;
+		a_cobjForm->filterKeywords.size = idx;
 	}
 
 	void PatchCategories(RE::BGSConstructibleObject* a_cobjForm, const PatchData::CategoriesData& a_categoriesData) {
 		bool isCleared = false, isDeleted = false, isAdded = false;
-
 		std::unordered_set<std::uint16_t> categoryKeywordIndexSet;
 
 		// Clear
@@ -767,65 +761,49 @@ namespace CObjs {
 		}
 	}
 
-	RE::BSTArray<RE::BSTTuple<RE::TESForm*, RE::BGSTypedFormValuePair::SharedVal>>* AllocateComponents() {
-		RE::MemoryManager& memoryManager = RE::MemoryManager::GetSingleton();
-		void *result = memoryManager.Allocate(sizeof(RE::BSTArray<RE::BSTTuple<RE::TESForm*, RE::BGSTypedFormValuePair::SharedVal>>), 0, false);
-		if (!result) {
-			logger::critical("Failed to allocate the new Components array.");
-			return nullptr;
-		}
-
-		memset(result, 0, sizeof(RE::BSTArray<RE::BSTTuple<RE::TESForm*, RE::BGSTypedFormValuePair::SharedVal>>));
-
-		return (RE::BSTArray<RE::BSTTuple<RE::TESForm*, RE::BGSTypedFormValuePair::SharedVal>>*)result;
-	}
-
 	void PatchComponents(RE::BGSConstructibleObject* a_cobjForm, const PatchData::ComponentsData& a_componentsData) {
-		bool isCleared = false;
+		if (!a_cobjForm->requiredItems) {
+			using alloc_type = std::remove_pointer_t<decltype(a_cobjForm->requiredItems)>;
+
+			RE::MemoryManager& mm = RE::MemoryManager::GetSingleton();
+			void* storage = mm.Allocate(sizeof(alloc_type), 0, false);
+			if (!storage) {
+				logger::critical("Failed to allocate the ConstructibleObject RequiredItems array.");
+				return;
+			}
+
+			a_cobjForm->requiredItems = new (storage) alloc_type();
+		}
 
 		// Clear
 		if (a_componentsData.Clear) {
 			a_cobjForm->requiredItems->clear();
-			isCleared = true;
 		}
 
 		// Delete
-		if (!isCleared && a_cobjForm->requiredItems) {
-			for (const auto& delForm : a_componentsData.DeleteComponentVec) {
-				for (auto it = a_cobjForm->requiredItems->begin(); it != a_cobjForm->requiredItems->end(); it++) {
-					if (it->first != delForm) {
-						continue;
-					}
-
+		for (const auto& delForm : a_componentsData.DeleteComponentVec) {
+			for (auto it = a_cobjForm->requiredItems->begin(); it != a_cobjForm->requiredItems->end(); it++) {
+				if (it->first == delForm) {
 					a_cobjForm->requiredItems->erase(it);
 					break;
 				}
 			}
 		}
 
-		if (!a_componentsData.AddComponentVec.empty() && !a_cobjForm->requiredItems) {
-			a_cobjForm->requiredItems = AllocateComponents();
-		}
-
 		// Add
-		if (a_cobjForm->requiredItems) {
-			for (const auto& addComponent : a_componentsData.AddComponentVec) {
-				bool found = false;
+		for (const auto& addComponent : a_componentsData.AddComponentVec) {
+			bool found = false;
 
-				for (auto it = a_cobjForm->requiredItems->begin(); it != a_cobjForm->requiredItems->end(); it++) {
-					if (it->first != addComponent.Form) {
-						continue;
-					}
-
+			for (auto it = a_cobjForm->requiredItems->begin(); it != a_cobjForm->requiredItems->end(); it++) {
+				if (it->first == addComponent.Form) {
 					found = true;
 					it->second.i = addComponent.Count;
-
 					break;
 				}
+			}
 
-				if (!found) {
-					a_cobjForm->requiredItems->push_back(RE::BSTTuple<RE::TESForm*, RE::BGSTypedFormValuePair::SharedVal>(addComponent.Form, addComponent.Count));
-				}
+			if (!found) {
+				a_cobjForm->requiredItems->push_back(RE::BSTTuple<RE::TESForm*, RE::BGSTypedFormValuePair::SharedVal>(addComponent.Form, addComponent.Count));
 			}
 		}
 	}

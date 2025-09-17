@@ -533,8 +533,7 @@ namespace LeveledLists {
 	};
 
 	LL_ALLOC* AllocateLL(std::size_t a_entriesCnt) {
-		RE::MemoryManager mm = RE::MemoryManager::GetSingleton();
-		return (LL_ALLOC*)mm.Allocate(sizeof(RE::LEVELED_OBJECT) * a_entriesCnt + sizeof(std::size_t), 0, false);
+		return static_cast<LL_ALLOC*>(RE::MemoryManager::GetSingleton().Allocate(sizeof(RE::LEVELED_OBJECT) * a_entriesCnt + sizeof(std::size_t), 0, false));
 	}
 
 	void FreeLeveledListEntries(RE::LEVELED_OBJECT* a_lobj, uint32_t arg2 = 0x3) {
@@ -573,7 +572,7 @@ namespace LeveledLists {
 
 		LL_ALLOC* newEntries = AllocateLL(entriesCnt);
 		if (!newEntries) {
-			logger::critical("Failed to allocate the new LeveledList entries.");
+			logger::critical("Failed to allocate the LeveledList entries.");
 			return;
 		}
 
@@ -604,13 +603,11 @@ namespace LeveledLists {
 			// Delete
 			for (const auto& delEntry : a_entriesData.DeleteEntryVec) {
 				for (auto it = leveledListVec.begin(); it != leveledListVec.end(); it++) {
-					if (delEntry.Level != it->level || delEntry.Form != it->form || delEntry.Count != it->count || delEntry.ChanceNone != it->chanceNone) {
-						continue;
+					if (delEntry.Level == it->level && delEntry.Form == it->form && delEntry.Count == it->count && delEntry.ChanceNone == it->chanceNone) {
+						leveledListVec.erase(it);
+						isModified = true;
+						break;
 					}
-
-					leveledListVec.erase(it);
-					isModified = true;
-					break;
 				}
 			}
 
