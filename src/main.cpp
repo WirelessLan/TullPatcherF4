@@ -1,6 +1,7 @@
 #include "ArmorAddons.h"
 #include "Armors.h"
 #include "Cells.h"
+#include "CombatStyles.h"
 #include "Containers.h"
 #include "CObjs.h"
 #include "DefaultObjectManagers.h"
@@ -24,6 +25,7 @@ void Patch() {
 	ArmorAddons::Patch();
 	Armors::Patch();
 	Cells::Patch();
+	CombatStyles::Patch();
 	Containers::Patch();
 	CObjs::Patch();
 	DefaultObjectManagers::Patch();
@@ -107,6 +109,7 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface * a_
 	ArmorAddons::ReadConfigs();
 	Armors::ReadConfigs();
 	Cells::ReadConfigs();
+	CombatStyles::ReadConfigs();
 	Containers::ReadConfigs();
 	CObjs::ReadConfigs();
 	DefaultObjectManagers::ReadConfigs();
