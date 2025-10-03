@@ -4,4 +4,3 @@ namespace Containers {
 	void ReadConfigs();
 	void Patch();
 }
-

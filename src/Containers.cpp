@@ -216,4 +216,3 @@ namespace Containers {
 		g_patchMap.clear();
 	}
 }
-
