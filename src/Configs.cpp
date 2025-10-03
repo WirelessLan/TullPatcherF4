@@ -49,8 +49,8 @@ namespace Configs {
 	}
 
 	bool ConfigReader::IsDelimiter(char ch) const {
-		return ch == '.' || ch == ',' || ch == '=' || ch == '!' ||
-		       ch == '&' || ch == '|' || ch == '(' || ch == ')' || ch == ';';
+		return ch == '.' || ch == ',' || ch == '=' || ch == '!' || ch == '&' || ch == '|' || ch == ';' ||
+		       ch == '(' || ch == ')' || ch == '{' || ch == '}' || ch == '[' || ch == ']';
 	}
 
 	void ConfigReader::ParseTokens() {
