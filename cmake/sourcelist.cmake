@@ -5,6 +5,8 @@ set(SOURCES
 	src/Armors.cpp
 	src/Cells.h
 	src/Cells.cpp
+	src/Containers.h
+	src/Containers.cpp
 	src/CObjs.h
 	src/CObjs.cpp
 	src/DefaultObjectManagers.h

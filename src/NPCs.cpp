@@ -331,7 +331,7 @@ namespace NPCs {
 			case ElementType::kHeadTexture:
 			case ElementType::kRace:
 			case ElementType::kSkin:
-				logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
+				logger::info("{}{}({}).{} = \"{}\";", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
 					ElementTypeToString(a_configData.Element), std::any_cast<std::string>(a_configData.AssignValue.value()));
 				break;
 

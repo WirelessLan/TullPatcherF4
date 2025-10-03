@@ -155,7 +155,7 @@ namespace Locations {
 
 			switch (a_configData.Element) {
 			case ElementType::kFullName:
-				logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
+				logger::info("{}{}({}).{} = \"{}\";", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
 					ElementTypeToString(a_configData.Element), a_configData.AssignValue.value());
 				break;
 
