@@ -183,21 +183,21 @@ namespace CObjs {
 			switch (a_configData.Element) {
 			case ElementType::kCategories:
 				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
-				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
+				for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); opIndex++) {
 					std::string opLog;
 
-					switch (a_configData.Operations[ii].OpType) {
+					switch (a_configData.Operations[opIndex].OpType) {
 					case OperationType::kClear:
-						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[ii].OpType));
+						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[opIndex].OpType));
 						break;
 
 					case OperationType::kAdd:
 					case OperationType::kDelete:
-						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType), std::any_cast<std::string>(a_configData.Operations[ii].OpData.value()));
+						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[opIndex].OpType), std::any_cast<std::string>(a_configData.Operations[opIndex].OpData.value()));
 						break;
 					}
 
-					if (ii == a_configData.Operations.size() - 1) {
+					if (opIndex == a_configData.Operations.size() - 1) {
 						opLog += ";";
 					}
 
@@ -207,27 +207,27 @@ namespace CObjs {
 
 			case ElementType::kComponents:
 				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
-				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
+				for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); opIndex++) {
 					std::string opLog;
 
-					switch (a_configData.Operations[ii].OpType) {
+					switch (a_configData.Operations[opIndex].OpType) {
 					case OperationType::kClear:
-						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[ii].OpType));
+						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[opIndex].OpType));
 						break;
 
 					case OperationType::kAdd:
-						opLog = fmt::format(".{}({}, {})", OperationTypeToString(a_configData.Operations[ii].OpType),
-							std::any_cast<ConfigData::Operation::ComponentData>(a_configData.Operations[ii].OpData.value()).Form,
-							std::any_cast<ConfigData::Operation::ComponentData>(a_configData.Operations[ii].OpData.value()).Count);
+						opLog = fmt::format(".{}({}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+							std::any_cast<ConfigData::Operation::ComponentData>(a_configData.Operations[opIndex].OpData.value()).Form,
+							std::any_cast<ConfigData::Operation::ComponentData>(a_configData.Operations[opIndex].OpData.value()).Count);
 						break;
 
 					case OperationType::kDelete:
-						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType),
-							std::any_cast<ConfigData::Operation::ComponentData>(a_configData.Operations[ii].OpData.value()).Form);
+						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+							std::any_cast<ConfigData::Operation::ComponentData>(a_configData.Operations[opIndex].OpData.value()).Form);
 						break;
 					}
 
-					if (ii == a_configData.Operations.size() - 1) {
+					if (opIndex == a_configData.Operations.size() - 1) {
 						opLog += ";";
 					}
 
@@ -326,25 +326,24 @@ namespace CObjs {
 					if (!form.has_value()) {
 						return false;
 					}
-
 					a_configData.AssignValue = std::any(form.value());
 				}
 			}
 			else if (a_configData.Element == ElementType::kCreatedObjectCount) {
 				token = reader.GetToken();
-				if (token.empty() || token == ";") {
-					logger::warn("Line {}, Col {}: Expected Value '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				if (token.empty()) {
+					logger::warn("Line {}, Col {}: Expected value.", reader.GetLastLine(), reader.GetLastLineIndex());
 					return false;
 				}
 
 				unsigned long parsedValue;
-				auto parsingResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-				if (parsingResult.ec != std::errc()) {
+				auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+				if (parseResult.ec != std::errc()) {
 					logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 					return false;
 				}
 
-				if (parsedValue > 0xFFFF) {
+				if (parsedValue > UINT16_MAX) {
 					logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 					return false;
 				}
@@ -352,7 +351,7 @@ namespace CObjs {
 				a_configData.AssignValue = std::any(static_cast<std::uint16_t>(parsedValue));
 			}
 			else {
-				logger::warn("Line {}, Col {}: Invalid Assignment '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element));
+				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element));
 				return false;
 			}
 
@@ -360,7 +359,7 @@ namespace CObjs {
 		}
 
 		bool ParseOperation(ConfigData& a_configData) {
-			ConfigData::Operation newOp;
+			ConfigData::Operation newOp{};
 
 			auto token = reader.GetToken();
 			if (token == "Clear") {
@@ -377,34 +376,19 @@ namespace CObjs {
 				return false;
 			}
 
-			switch (a_configData.Element) {
-			case ElementType::kCategories:
-				switch (newOp.OpType) {
-				case OperationType::kClear:
-				case OperationType::kAdd:
-				case OperationType::kDelete:
-					break;
-
-				default:
-					logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.",
-						reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
-					return false;
+			bool isValidOperation = [](ElementType elem, OperationType op) {
+				if (elem == ElementType::kCategories) {
+					return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete;
 				}
-				break;
-
-			case ElementType::kComponents:
-				switch (newOp.OpType) {
-				case OperationType::kClear:
-				case OperationType::kAdd:
-				case OperationType::kDelete:
-					break;
-
-				default:
-					logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.",
-						reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
-					return false;
+				else if (elem == ElementType::kComponents) {
+					return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete;
 				}
-				break;
+				return false;
+			}(a_configData.Element, newOp.OpType);
+
+			if (!isValidOperation) {
+				logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
+				return false;
 			}
 
 			token = reader.GetToken();
@@ -427,44 +411,39 @@ namespace CObjs {
 				break;
 
 			case ElementType::kComponents: {
-				std::optional<ConfigData::Operation::ComponentData> opData;
-
 				if (newOp.OpType != OperationType::kClear) {
-					opData = ConfigData::Operation::ComponentData{};
+					ConfigData::Operation::ComponentData opData{};
 
-					if (newOp.OpType == OperationType::kAdd || newOp.OpType == OperationType::kDelete) {
-						std::optional<std::string> form = ParseForm();
-						if (!form.has_value()) {
+					std::optional<std::string> form = ParseForm();
+					if (!form.has_value()) {
+						return false;
+					}
+					opData.Form = form.value();
+
+					if (newOp.OpType == OperationType::kAdd) {
+						token = reader.GetToken();
+						if (token != ",") {
+							logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
 							return false;
 						}
 
-						opData->Form = form.value();
-
-						if (newOp.OpType == OperationType::kAdd) {
-							token = reader.GetToken();
-							if (token != ",") {
-								logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
-								return false;
-							}
-
-							token = reader.GetToken();
-							if (token.empty()) {
-								logger::warn("Line {}, Col {}: Expected Count '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-								return false;
-							}
-
-							unsigned long parsedValue;
-							auto parsingResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-							if (parsingResult.ec != std::errc()) {
-								logger::warn("Line {}, Col {}: Failed to parse count '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-								return false;
-							}
-
-							opData->Count = static_cast<std::uint32_t>(parsedValue);
+						token = reader.GetToken();
+						if (token.empty()) {
+							logger::warn("Line {}, Col {}: Expected count.", reader.GetLastLine(), reader.GetLastLineIndex());
+							return false;
 						}
+
+						unsigned long parsedValue;
+						auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+						if (parseResult.ec != std::errc()) {
+							logger::warn("Line {}, Col {}: Failed to parse count '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+							return false;
+						}
+
+						opData.Count = static_cast<std::uint32_t>(parsedValue);
 					}
 
-					newOp.OpData = std::any(opData.value());
+					newOp.OpData = std::any(opData);
 				}
 
 				break;
@@ -492,8 +471,8 @@ namespace CObjs {
 		const auto keywords = RE::BGSKeyword::GetTypedKeywords();
 		if (keywords) {
 			const auto& arr = (*keywords)[RE::stl::to_underlying(type)];
-			for (uint16_t ii = 0; ii < arr.size(); ii++) {
-				g_keywordIndexMap[arr[ii]] = ii;
+			for (uint16_t keywordIndex = 0; keywordIndex < arr.size(); keywordIndex++) {
+				g_keywordIndexMap[arr[keywordIndex]] = keywordIndex;
 			}
 		}
 	}
@@ -664,12 +643,10 @@ namespace CObjs {
 			return retVec;
 		}
 
-		for (std::uint32_t ii = 0; ii < a_cobjForm->filterKeywords.size; ii++) {
-			if (a_cobjForm->filterKeywords.array[ii].keywordIndex == 0xFFFF) {
-				continue;
+		for (std::uint32_t keywordIndex = 0; keywordIndex < a_cobjForm->filterKeywords.size; keywordIndex++) {
+			if (a_cobjForm->filterKeywords.array[keywordIndex].keywordIndex != UINT16_MAX) {
+				retVec.insert(a_cobjForm->filterKeywords.array[keywordIndex].keywordIndex);
 			}
-
-			retVec.insert(a_cobjForm->filterKeywords.array[ii].keywordIndex);
 		}
 
 		return retVec;
@@ -851,14 +828,12 @@ namespace CObjs {
 
 			if (!g_filterByCategoryKeywordPatchMap.empty()) {
 				if (cobjForm->filterKeywords.size && cobjForm->filterKeywords.array) {
-					for (std::uint32_t ii = 0; ii < cobjForm->filterKeywords.size; ii++) {
-						if (cobjForm->filterKeywords.array[ii].keywordIndex == 0xFFFF) {
-							continue;
-						}
-
-						auto filterByCategoryKeyword_iter = g_filterByCategoryKeywordPatchMap.find(cobjForm->filterKeywords.array[ii].keywordIndex);
-						if (filterByCategoryKeyword_iter != g_filterByCategoryKeywordPatchMap.end()) {
-							Patch(cobjForm, filterByCategoryKeyword_iter->second);
+					for (std::uint32_t keywordIndex = 0; keywordIndex < cobjForm->filterKeywords.size; keywordIndex++) {
+						if (cobjForm->filterKeywords.array[keywordIndex].keywordIndex != UINT16_MAX) {
+							auto filterByCategoryKeyword_iter = g_filterByCategoryKeywordPatchMap.find(cobjForm->filterKeywords.array[keywordIndex].keywordIndex);
+							if (filterByCategoryKeyword_iter != g_filterByCategoryKeywordPatchMap.end()) {
+								Patch(cobjForm, filterByCategoryKeyword_iter->second);
+							}
 						}
 					}
 				}

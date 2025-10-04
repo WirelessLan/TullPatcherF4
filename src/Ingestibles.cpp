@@ -148,25 +148,25 @@ namespace Ingestibles {
 			switch (a_configData.Element) {
 			case ElementType::kEffects:
 				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
-				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
+				for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); opIndex++) {
 					std::string opLog;
 
-					switch (a_configData.Operations[ii].OpType) {
+					switch (a_configData.Operations[opIndex].OpType) {
 					case OperationType::kClear:
-						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[ii].OpType));
+						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[opIndex].OpType));
 						break;
 
 					case OperationType::kAdd:
 					case OperationType::kDelete:
-						opLog = fmt::format(".{}({}, {}, {}, {})", OperationTypeToString(a_configData.Operations[ii].OpType),
-							a_configData.Operations[ii].OpEffectData->EffectForm,
-							a_configData.Operations[ii].OpEffectData->Magnitude,
-							a_configData.Operations[ii].OpEffectData->Area,
-							a_configData.Operations[ii].OpEffectData->Duration);
+						opLog = fmt::format(".{}({}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+							a_configData.Operations[opIndex].OpEffectData->EffectForm,
+							a_configData.Operations[opIndex].OpEffectData->Magnitude,
+							a_configData.Operations[opIndex].OpEffectData->Area,
+							a_configData.Operations[opIndex].OpEffectData->Duration);
 						break;
 					}
 
-					if (ii == a_configData.Operations.size() - 1) {
+					if (opIndex == a_configData.Operations.size() - 1) {
 						opLog += ";";
 					}
 
@@ -222,29 +222,33 @@ namespace Ingestibles {
 		}
 
 		bool ParseOperation(ConfigData& a_configData) {
-			OperationType opType;
+			ConfigData::Operation newOp{};
 
 			auto token = reader.GetToken();
 			if (token == "Clear") {
-				opType = OperationType::kClear;
+				newOp.OpType = OperationType::kClear;
 			}
 			else if (token == "Add") {
-				opType = OperationType::kAdd;
+				newOp.OpType = OperationType::kAdd;
 			}
 			else if (token == "Delete") {
-				opType = OperationType::kDelete;
+				newOp.OpType = OperationType::kDelete;
 			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
 			}
 
-			if (opType == OperationType::kClear || opType == OperationType::kAdd || opType == OperationType::kDelete) {
-				if (a_configData.Element != ElementType::kEffects) {
-					logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.",
-						reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(opType));
-					return false;
+			bool isValidOperation = [](ElementType elem, OperationType op) {
+				if (elem == ElementType::kEffects) {
+					return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete;
 				}
+				return false;
+			}(a_configData.Element, newOp.OpType);
+
+			if (!isValidOperation) {
+				logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
+				return false;
 			}
 
 			token = reader.GetToken();
@@ -254,18 +258,28 @@ namespace Ingestibles {
 			}
 
 			if (a_configData.Element == ElementType::kEffects) {
-				ConfigData::Operation newOp{};
-				newOp.OpType = opType;
-
-				if (opType != OperationType::kClear) {
-					newOp.OpEffectData = ConfigData::Operation::EffectData{};
+				if (newOp.OpType != OperationType::kClear) {
+					ConfigData::Operation::EffectData effectData{};
 
 					std::optional<std::string> opForm = ParseForm();
 					if (!opForm.has_value()) {
 						return false;
 					}
 
-					newOp.OpEffectData->EffectForm = opForm.value();
+					effectData.EffectForm = opForm.value();
+
+					token = reader.GetToken();
+					if (token != ",") {
+						logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
+						return false;
+					}
+
+					auto parsedNumber = ParseNumber();
+					if (!parsedNumber.has_value()) {
+						return false;
+					}
+
+					effectData.Magnitude = parsedNumber.value();
 
 					token = reader.GetToken();
 					if (token != ",") {
@@ -274,58 +288,19 @@ namespace Ingestibles {
 					}
 
 					token = reader.GetToken();
-					if (token.empty() || token == ",") {
-						logger::warn("Line {}, Col {}: Expected magnitude '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					if (token.empty()) {
+						logger::warn("Line {}, Col {}: Expected area.", reader.GetLastLine(), reader.GetLastLineIndex());
 						return false;
 					}
 
-					std::string magStr = std::string(token);
-					if (reader.Peek() == ".") {
-						magStr += reader.GetToken();
-
-						token = reader.GetToken();
-						if (token.empty() || token == ",") {
-							logger::warn("Line {}, Col {}: Expected magnitude's decimal value '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-							return false;
-						}
-
-						magStr += std::string(token);
-					}
-
-					if (!Utils::IsValidDecimalNumber(magStr)) {
-						logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), magStr);
-						return false;
-					}
-
-					float fParsedValue;
-					auto parsingResult = std::from_chars(magStr.data(), magStr.data() + magStr.size(), fParsedValue);
-					if (parsingResult.ec != std::errc()) {
-						logger::warn("Line {}, Col {}: Failed to parse magnitude '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), magStr);
-						return false;
-					}
-
-					newOp.OpEffectData->Magnitude = fParsedValue;
-
-					token = reader.GetToken();
-					if (token != ",") {
-						logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
-						return false;
-					}
-
-					token = reader.GetToken();
-					if (token.empty() || token == ",") {
-						logger::warn("Line {}, Col {}: Expected area '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-						return false;
-					}
-
-					unsigned long uParsedValue;
-					parsingResult = std::from_chars(token.data(), token.data() + token.size(), uParsedValue);
-					if (parsingResult.ec != std::errc()) {
+					unsigned long parsedValue;
+					auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+					if (parseResult.ec != std::errc()) {
 						logger::warn("Line {}, Col {}: Failed to parse area '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 						return false;
 					}
 
-					newOp.OpEffectData->Area = static_cast<std::uint32_t>(uParsedValue);
+					effectData.Area = static_cast<std::uint32_t>(parsedValue);
 
 					token = reader.GetToken();
 					if (token != ",") {
@@ -334,21 +309,21 @@ namespace Ingestibles {
 					}
 
 					token = reader.GetToken();
-					if (token.empty() || token == ")") {
-						logger::warn("Line {}, Col {}: Expected duration '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					if (token.empty()) {
+						logger::warn("Line {}, Col {}: Expected duration.", reader.GetLastLine(), reader.GetLastLineIndex());
 						return false;
 					}
 
-					parsingResult = std::from_chars(token.data(), token.data() + token.size(), uParsedValue);
-					if (parsingResult.ec != std::errc()) {
+					parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+					if (parseResult.ec != std::errc()) {
 						logger::warn("Line {}, Col {}: Failed to parse duration '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 						return false;
 					}
 
-					newOp.OpEffectData->Duration = static_cast<std::uint32_t>(uParsedValue);
-				}
+					effectData.Duration = static_cast<std::uint32_t>(parsedValue);
 
-				a_configData.Operations.push_back(newOp);
+					newOp.OpEffectData = effectData;
+				}
 			}
 
 			token = reader.GetToken();
@@ -356,6 +331,8 @@ namespace Ingestibles {
 				logger::warn("Line {}, Col {}: Syntax error. Expected ')'.", reader.GetLastLine(), reader.GetLastLineIndex());
 				return false;
 			}
+
+			a_configData.Operations.push_back(newOp);
 
 			return true;
 		}

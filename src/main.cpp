@@ -6,6 +6,7 @@
 #include "CObjs.h"
 #include "DefaultObjectManagers.h"
 #include "FormLists.h"
+#include "ImageSpaceAdapters.h"
 #include "Ingestibles.h"
 #include "Keywords.h"
 #include "LeveledLists.h"
@@ -30,6 +31,7 @@ void Patch() {
 	CObjs::Patch();
 	DefaultObjectManagers::Patch();
 	FormLists::Patch();
+	ImageSpaceAdapters::Patch();
 	Ingestibles::Patch();
 	Keywords::Patch();
 	LeveledLists::Patch();
@@ -114,6 +116,7 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface * a_
 	CObjs::ReadConfigs();
 	DefaultObjectManagers::ReadConfigs();
 	FormLists::ReadConfigs();
+	ImageSpaceAdapters::ReadConfigs();
 	Ingestibles::ReadConfigs();
 	Keywords::ReadConfigs();
 	LeveledLists::ReadConfigs();

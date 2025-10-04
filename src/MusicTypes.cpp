@@ -177,21 +177,21 @@ namespace MusicTypes {
 
 			case ElementType::kMusicTracks:
 				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
-				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
+				for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); opIndex++) {
 					std::string opLog;
 
-					switch (a_configData.Operations[ii].OpType) {
+					switch (a_configData.Operations[opIndex].OpType) {
 					case OperationType::kClear:
-						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[ii].OpType));
+						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[opIndex].OpType));
 						break;
 
 					case OperationType::kAdd:
 					case OperationType::kDelete:
-						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType), a_configData.Operations[ii].OpForm.value());
+						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[opIndex].OpType), a_configData.Operations[opIndex].OpForm.value());
 						break;
 					}
 
-					if (ii == a_configData.Operations.size() - 1) {
+					if (opIndex == a_configData.Operations.size() - 1) {
 						opLog += ";";
 					}
 
@@ -271,77 +271,25 @@ namespace MusicTypes {
 			}
 
 			if (a_configData.Element == ElementType::kDucking) {
-				token = reader.GetToken();
-				if (token.empty() || token == ";") {
-					logger::warn("Line {}, Col {}: Expected value '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				auto parsedValue = ParseNumber();
+				if (!parsedValue.has_value()) {
 					return false;
 				}
 
-				std::string numStr = std::string(token);
-				if (reader.Peek() == ".") {
-					numStr += reader.GetToken();
-
-					token = reader.GetToken();
-					if (token.empty() || token == ",") {
-						logger::warn("Line {}, Col {}: Expected decimal value '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-						return false;
-					}
-
-					numStr += std::string(token);
-				}
-
-				if (!Utils::IsValidDecimalNumber(numStr)) {
-					logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), numStr);
+				if (*parsedValue < 0.0f || *parsedValue > 655.35f) {
+					logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), *parsedValue);
 					return false;
 				}
 
-				float parsedValue;
-				auto parsingResult = std::from_chars(numStr.data(), numStr.data() + numStr.size(), parsedValue);
-				if (parsingResult.ec != std::errc()) {
-					logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), numStr);
-					return false;
-				}
-
-				if (parsedValue < 0.0f || parsedValue > 655.35f) {
-					logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), parsedValue);
-					return false;
-				}
-
-				a_configData.AssignValue = std::any(static_cast<std::uint16_t>(std::round(parsedValue * 100.0f)));
+				a_configData.AssignValue = std::any(static_cast<std::uint16_t>(std::round(*parsedValue * 100.0f)));
 			}
 			else if (a_configData.Element == ElementType::kFadeDuration) {
-				token = reader.GetToken();
-				if (token.empty() || token == ";") {
-					logger::warn("Line {}, Col {}: Expected value '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				auto parsedValue = ParseNumber();
+				if (!parsedValue.has_value()) {
 					return false;
 				}
 
-				std::string numStr = std::string(token);
-				if (reader.Peek() == ".") {
-					numStr += reader.GetToken();
-
-					token = reader.GetToken();
-					if (token.empty() || token == ",") {
-						logger::warn("Line {}, Col {}: Expected decimal value '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-						return false;
-					}
-
-					numStr += std::string(token);
-				}
-
-				if (!Utils::IsValidDecimalNumber(numStr)) {
-					logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), numStr);
-					return false;
-				}
-
-				float parsedValue;
-				auto parsingResult = std::from_chars(numStr.data(), numStr.data() + numStr.size(), parsedValue);
-				if (parsingResult.ec != std::errc()) {
-					logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), numStr);
-					return false;
-				}
-
-				a_configData.AssignValue = std::any(parsedValue);
+				a_configData.AssignValue = std::any(*parsedValue);
 			}
 			else if (a_configData.Element == ElementType::kFlags) {
 				std::uint32_t flagValue = 0;
@@ -377,19 +325,19 @@ namespace MusicTypes {
 			}
 			else if (a_configData.Element == ElementType::kPriority) {
 				token = reader.GetToken();
-				if (token.empty() || token == ";") {
-					logger::warn("Line {}, Col {}: Expected value '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				if (token.empty()) {
+					logger::warn("Line {}, Col {}: Expected value.", reader.GetLastLine(), reader.GetLastLineIndex());
 					return false;
 				}
 
 				unsigned long parsedValue;
-				auto parsingResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-				if (parsingResult.ec != std::errc()) {
+				auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+				if (parseResult.ec != std::errc()) {
 					logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 					return false;
 				}
 
-				if (parsedValue > 0xFF) {
+				if (parsedValue > UINT8_MAX) {
 					logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 					return false;
 				}
@@ -397,7 +345,7 @@ namespace MusicTypes {
 				a_configData.AssignValue = std::any(static_cast<std::uint8_t>(parsedValue));
 			}
 			else {
-				logger::warn("Line {}, Col {}: Invalid Assignment '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element));
+				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element));
 				return false;
 			}
 
@@ -405,7 +353,7 @@ namespace MusicTypes {
 		}
 
 		bool ParseOperation(ConfigData& a_configData) {
-			ConfigData::Operation newOp;
+			ConfigData::Operation newOp{};
 
 			auto token = reader.GetToken();
 			if (token == "Clear") {
@@ -422,20 +370,16 @@ namespace MusicTypes {
 				return false;
 			}
 
-			switch (a_configData.Element) {
-			case ElementType::kMusicTracks:
-				switch (newOp.OpType) {
-				case OperationType::kClear:
-				case OperationType::kAdd:
-				case OperationType::kDelete:
-					break;
-
-				default:
-					logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.",
-						reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
-					return false;
+			bool isValidOperation = [](ElementType elem, OperationType op) {
+				if (elem == ElementType::kMusicTracks) {
+					return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete;
 				}
-				break;
+				return false;
+			}(a_configData.Element, newOp.OpType);
+
+			if (!isValidOperation) {
+				logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
+				return false;
 			}
 
 			token = reader.GetToken();
@@ -471,8 +415,8 @@ namespace MusicTypes {
 
 		std::optional<std::uint32_t> ParseFlag() {
 			auto token = reader.GetToken();
-			if (token.empty() || token == "|" || token == ";") {
-				logger::warn("Line {}, Col {}: Expected flag name '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+			if (token.empty()) {
+				logger::warn("Line {}, Col {}: Expected flag.", reader.GetLastLine(), reader.GetLastLineIndex());
 				return std::nullopt;
 			}
 
@@ -498,7 +442,7 @@ namespace MusicTypes {
 				return 0x0040;
 			}
 			else {
-				logger::warn("Line {}, Col {}: Invalid flag name '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				logger::warn("Line {}, Col {}: Invalid flag '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return std::nullopt;
 			}
 		}

@@ -161,7 +161,7 @@ namespace WorldSpaces {
 				a_config.AssignValue = std::string(token.substr(1, token.length() - 2));
 			}
 			else {
-				logger::warn("Line {}, Col {}: Invalid Assignment to {}.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
+				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
 				return false;
 			}
 

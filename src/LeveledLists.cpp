@@ -176,29 +176,29 @@ namespace LeveledLists {
 			switch (a_configData.Element) {
 			case ElementType::kEntries:
 				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
-				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
+				for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); opIndex++) {
 					std::string opLog;
 
-					switch (a_configData.Operations[ii].OpType) {
+					switch (a_configData.Operations[opIndex].OpType) {
 					case OperationType::kClear:
-						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[ii].OpType));
+						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[opIndex].OpType));
 						break;
 
 					case OperationType::kDeleteAll:
-						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType), a_configData.Operations[ii].OpData->Form);
+						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[opIndex].OpType), a_configData.Operations[opIndex].OpData->Form);
 						break;
 
 					case OperationType::kAdd:
 					case OperationType::kDelete:
-						opLog = fmt::format(".{}({}, {}, {}, {})", OperationTypeToString(a_configData.Operations[ii].OpType),
-							a_configData.Operations[ii].OpData->Level,
-							a_configData.Operations[ii].OpData->Form,
-							a_configData.Operations[ii].OpData->Count,
-							a_configData.Operations[ii].OpData->ChanceNone);
+						opLog = fmt::format(".{}({}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+							a_configData.Operations[opIndex].OpData->Level,
+							a_configData.Operations[opIndex].OpData->Form,
+							a_configData.Operations[opIndex].OpData->Count,
+							a_configData.Operations[opIndex].OpData->ChanceNone);
 						break;
 					}
 
-					if (ii == a_configData.Operations.size() - 1) {
+					if (opIndex == a_configData.Operations.size() - 1) {
 						opLog += ";";
 					}
 
@@ -277,24 +277,24 @@ namespace LeveledLists {
 			}
 
 			if (a_configData.Element != ElementType::kChanceNone && a_configData.Element != ElementType::kMaxCount && a_configData.Element != ElementType::kFlags) {
-				logger::warn("Line {}, Col {}: Invalid Assignment '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element));
+				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element));
 				return false;
 			}
 
 			token = reader.GetToken();
-			if (token.empty() || token == ";") {
-				logger::warn("Line {}, Col {}: Expected Value '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+			if (token.empty()) {
+				logger::warn("Line {}, Col {}: Expected value.", reader.GetLastLine(), reader.GetLastLineIndex());
 				return false;
 			}
 
 			unsigned long parsedValue;
-			auto parsingResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-			if (parsingResult.ec != std::errc()) {
+			auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+			if (parseResult.ec != std::errc()) {
 				logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
 			}
 
-			if (parsedValue > 0xFF) {
+			if (parsedValue > UINT8_MAX) {
 				logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
 			}
@@ -309,32 +309,36 @@ namespace LeveledLists {
 		}
 
 		bool ParseOperation(ConfigData& a_configData) {
-			OperationType opType;
+			ConfigData::Operation newOp{};
 
 			auto token = reader.GetToken();
 			if (token == "Clear") {
-				opType = OperationType::kClear;
+				newOp.OpType = OperationType::kClear;
 			}
 			else if (token == "Add") {
-				opType = OperationType::kAdd;
+				newOp.OpType = OperationType::kAdd;
 			}
 			else if (token == "Delete") {
-				opType = OperationType::kDelete;
+				newOp.OpType = OperationType::kDelete;
 			}
 			else if (token == "DeleteAll") {
-				opType = OperationType::kDeleteAll;
+				newOp.OpType = OperationType::kDeleteAll;
 			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
 			}
 
-			if (opType == OperationType::kClear || opType == OperationType::kAdd || opType == OperationType::kDelete) {
-				if (a_configData.Element != ElementType::kEntries) {
-					logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.",
-						reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(opType));
-					return false;
+			bool isValidOperation = [](ElementType elem, OperationType op) {
+				if (elem == ElementType::kEntries) {
+					return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete || op == OperationType::kDeleteAll;
 				}
+				return false;
+			}(a_configData.Element, newOp.OpType);
+
+			if (!isValidOperation) {
+				logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
+				return false;
 			}
 
 			token = reader.GetToken();
@@ -343,101 +347,104 @@ namespace LeveledLists {
 				return false;
 			}
 
-			std::optional<ConfigData::Operation::Data> opData;
-			if (opType != OperationType::kClear) {
-				opData = ConfigData::Operation::Data{};
+			if (a_configData.Element == ElementType::kEntries) {
+				if (newOp.OpType != OperationType::kClear) {
+					ConfigData::Operation::Data opData{};
 
-				if (opType == OperationType::kAdd || opType == OperationType::kDelete) {
-					token = reader.GetToken();
-					if (token.empty() || token == ",") {
-						logger::warn("Line {}, Col {}: Expected Level '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-						return false;
+					if (newOp.OpType == OperationType::kAdd || newOp.OpType == OperationType::kDelete) {
+						token = reader.GetToken();
+						if (token.empty()) {
+							logger::warn("Line {}, Col {}: Expected level.", reader.GetLastLine(), reader.GetLastLineIndex());
+							return false;
+						}
+
+						unsigned long parsedValue;
+						auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+						if (parseResult.ec != std::errc()) {
+							logger::warn("Line {}, Col {}: Failed to parse level '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+							return false;
+						}
+
+						if (parsedValue > UINT16_MAX) {
+							logger::warn("Line {}, Col {}: Failed to parse level '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+							return false;
+						}
+
+						opData.Level = static_cast<std::uint16_t>(parsedValue);
+
+						token = reader.GetToken();
+						if (token != ",") {
+							logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
+							return false;
+						}
+
+						std::optional<std::string> opForm = ParseForm();
+						if (!opForm.has_value()) {
+							return false;
+						}
+
+						opData.Form = opForm.value();
+
+						token = reader.GetToken();
+						if (token != ",") {
+							logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
+							return false;
+						}
+
+						token = reader.GetToken();
+						if (token.empty()) {
+							logger::warn("Line {}, Col {}: Expected count.", reader.GetLastLine(), reader.GetLastLineIndex());
+							return false;
+						}
+
+						parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+						if (parseResult.ec != std::errc()) {
+							logger::warn("Line {}, Col {}: Failed to parse count '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+							return false;
+						}
+
+						if (parsedValue > UINT16_MAX) {
+							logger::warn("Line {}, Col {}: Failed to parse count '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+							return false;
+						}
+
+						opData.Count = static_cast<std::uint16_t>(parsedValue);
+
+						token = reader.GetToken();
+						if (token != ",") {
+							logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
+							return false;
+						}
+
+						token = reader.GetToken();
+						if (token.empty()) {
+							logger::warn("Line {}, Col {}: Expected chaceNone.", reader.GetLastLine(), reader.GetLastLineIndex());
+							return false;
+						}
+
+						parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+						if (parseResult.ec != std::errc()) {
+							logger::warn("Line {}, Col {}: Failed to parse chanceNone '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+							return false;
+						}
+
+						if (parsedValue > UINT8_MAX) {
+							logger::warn("Line {}, Col {}: Failed to parse chanceNone '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+							return false;
+						}
+
+						opData.ChanceNone = static_cast<std::uint8_t>(parsedValue);
+					}
+					else if (newOp.OpType == OperationType::kDeleteAll) {
+						std::optional<std::string> opForm = ParseForm();
+						if (!opForm.has_value()) {
+							return false;
+						}
+
+						opData.Form = opForm.value();
 					}
 
-					unsigned long parsedValue;
-					auto parsingResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-					if (parsingResult.ec != std::errc()) {
-						logger::warn("Line {}, Col {}: Failed to parse level '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-						return false;
-					}
-
-					if (parsedValue > 0xFFFF) {
-						logger::warn("Line {}, Col {}: Failed to parse level '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-						return false;
-					}
-
-					opData->Level = static_cast<std::uint16_t>(parsedValue);
-
-					token = reader.GetToken();
-					if (token != ",") {
-						logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
-						return false;
-					}
-
-					std::optional<std::string> opForm = ParseForm();
-					if (!opForm.has_value()) {
-						return false;
-					}
-
-					opData->Form = opForm.value();
-
-					token = reader.GetToken();
-					if (token != ",") {
-						logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
-						return false;
-					}
-
-					token = reader.GetToken();
-					if (token.empty()) {
-						logger::warn("Line {}, Col {}: Expected Count '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-						return false;
-					}
-
-					parsingResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-					if (parsingResult.ec != std::errc()) {
-						logger::warn("Line {}, Col {}: Failed to parse count '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-						return false;
-					}
-
-					if (parsedValue > 0xFFFF) {
-						logger::warn("Line {}, Col {}: Failed to parse count '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-						return false;
-					}
-
-					opData->Count = static_cast<std::uint16_t>(parsedValue);
-
-					token = reader.GetToken();
-					if (token != ",") {
-						logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
-						return false;
-					}
-
-					token = reader.GetToken();
-					if (token.empty()) {
-						logger::warn("Line {}, Col {}: Expected ChaceNone '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-						return false;
-					}
-
-					parsingResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-					if (parsingResult.ec != std::errc()) {
-						logger::warn("Line {}, Col {}: Failed to parse chanceNone '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-						return false;
-					}
-
-					if (parsedValue > 0xFF) {
-						logger::warn("Line {}, Col {}: Failed to parse chanceNone '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-						return false;
-					}
-
-					opData->ChanceNone = static_cast<std::uint8_t>(parsedValue);
-				}
-				else if (opType == OperationType::kDeleteAll) {
-					std::optional<std::string> opForm = ParseForm();
-					if (!opForm.has_value()) {
-						return false;
-					}
-
-					opData->Form = opForm.value();
+					newOp.OpData = opData;
 				}
 			}
 
@@ -447,7 +454,7 @@ namespace LeveledLists {
 				return false;
 			}
 
-			a_configData.Operations.push_back({ opType, opData });
+			a_configData.Operations.push_back(newOp);
 
 			return true;
 		}
@@ -520,8 +527,8 @@ namespace LeveledLists {
 			return retVec;
 		}
 
-		for (std::size_t ii = 0; ii < static_cast<std::uint8_t>(a_leveledList->baseListCount); ii++) {
-			retVec.push_back(a_leveledList->leveledLists[ii]);
+		for (std::size_t entryIndex = 0; entryIndex < static_cast<std::uint8_t>(a_leveledList->baseListCount); entryIndex++) {
+			retVec.push_back(a_leveledList->leveledLists[entryIndex]);
 		}
 
 		return retVec;
@@ -565,9 +572,9 @@ namespace LeveledLists {
 		}
 
 		std::size_t entriesCnt = a_entries.size();
-		if (entriesCnt > 0xFF) {
+		if (entriesCnt > UINT8_MAX) {
 			logger::critical("Entries size is bigger than 255. The entries size has been set to 255.");
-			entriesCnt = 0xFF;
+			entriesCnt = UINT8_MAX;
 		}
 
 		LL_ALLOC* newEntries = AllocateLL(entriesCnt);
@@ -577,8 +584,8 @@ namespace LeveledLists {
 		}
 
 		newEntries->count = static_cast<std::uint32_t>(entriesCnt);
-		for (std::size_t ii = 0; ii < entriesCnt; ii++) {
-			newEntries->ll[ii] = a_entries[ii];
+		for (std::size_t entryIndex = 0; entryIndex < entriesCnt; entryIndex++) {
+			newEntries->ll[entryIndex] = a_entries[entryIndex];
 		}
 
 		a_leveledList->leveledLists = newEntries->ll;

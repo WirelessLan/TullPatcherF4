@@ -134,11 +134,11 @@ namespace Outfits {
 			switch (a_configData.Element) {
 			case ElementType::kItems:
 				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
-				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
-					std::string opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType),
-						a_configData.Operations[ii].OpForm.has_value() ? a_configData.Operations[ii].OpForm.value() : "");
+				for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); opIndex++) {
+					std::string opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+						a_configData.Operations[opIndex].OpForm.has_value() ? a_configData.Operations[opIndex].OpForm.value() : "");
 
-					if (ii == a_configData.Operations.size() - 1) {
+					if (opIndex == a_configData.Operations.size() - 1) {
 						opLog += ";";
 					}
 
@@ -194,20 +194,34 @@ namespace Outfits {
 		}
 
 		bool ParseOperation(ConfigData& a_configData) {
-			OperationType opType;
+			ConfigData::Operation newOp{};
 
 			auto token = reader.GetToken();
 			if (token == "Clear") {
-				opType = OperationType::kClear;
+				newOp.OpType = OperationType::kClear;
 			}
 			else if (token == "Add") {
-				opType = OperationType::kAdd;
+				newOp.OpType = OperationType::kAdd;
 			}
 			else if (token == "Delete") {
-				opType = OperationType::kDelete;
+				newOp.OpType = OperationType::kDelete;
 			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				return false;
+			}
+
+			bool isValidOperation = [](ElementType elem, OperationType op) {
+				switch (elem) {
+				case ElementType::kItems:
+					return (op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete);
+				default:
+					return false;
+				}
+			}(a_configData.Element, newOp.OpType);
+
+			if (!isValidOperation) {
+				logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
 				return false;
 			}
 
@@ -217,11 +231,13 @@ namespace Outfits {
 				return false;
 			}
 
-			std::optional<std::string> opData;
-			if (opType != OperationType::kClear) {
-				opData = ParseForm();
-				if (!opData.has_value()) {
-					return false;
+			if (a_configData.Element == ElementType::kItems) {
+				if (newOp.OpType != OperationType::kClear) {
+					auto form = ParseForm();
+					if (!form.has_value()) {
+						return false;
+					}
+					newOp.OpForm = form.value();
 				}
 			}
 
@@ -231,7 +247,7 @@ namespace Outfits {
 				return false;
 			}
 
-			a_configData.Operations.push_back({ opType, opData });
+			a_configData.Operations.push_back(newOp);
 
 			return true;
 		}

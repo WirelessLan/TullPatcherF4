@@ -275,7 +275,7 @@ namespace CombatStyles
 				return std::nullopt;
 			}
 
-			if (!ParseAssignValue(configData)) {
+			if (!ParseAssignment(configData)) {
 				return std::nullopt;
 			}
 
@@ -541,7 +541,7 @@ namespace CombatStyles
 			return true;
 		}
 
-		bool ParseAssignValue(ConfigData& a_configData) {
+		bool ParseAssignment(ConfigData& a_configData) {
 			auto token = reader.GetToken();
 			if (token != "=") {
 				logger::warn("Line {}, Col {}: Syntax error. Expected '='.", reader.GetLastLine(), reader.GetLastLineIndex());
@@ -601,11 +601,11 @@ namespace CombatStyles
 				}
 
 				a_configData.AssignValue = std::any(parsedValue.value());
-			} 
+			}
 			else if (a_configData.Element == ElementType::kThrowMaxTargets) {
 				token = reader.GetToken();
 				if (token.empty()) {
-					logger::warn("Line {}, Col {}: Syntax error. Expected number.", reader.GetLastLine(), reader.GetLastLineIndex());
+					logger::warn("Line {}, Col {}: Expected value.", reader.GetLastLine(), reader.GetLastLineIndex());
 					return false;
 				}
 
@@ -656,7 +656,7 @@ namespace CombatStyles
 				a_configData.AssignValue = std::any(flagValue);
 			}
 			else {
-				logger::warn("Line {}, Col {}: Invalid Assignment '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element));
+				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element));
 				return false;
 			}
 

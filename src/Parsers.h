@@ -378,8 +378,8 @@ namespace Parsers {
 
 						if (conditionName == PluginExistsConditionName) {
 							token = reader.GetToken();
-							if (token.empty() || token == ")") {
-								logger::warn("Line {}, Col {}: Syntax error. Plugin name expected.", reader.GetLastLine(), reader.GetLastLineIndex());
+							if (token.empty()) {
+								logger::warn("Line {}, Col {}: Expected pluginName.", reader.GetLastLine(), reader.GetLastLineIndex());
 								return std::vector<ConditionToken>{};
 							}
 
@@ -527,7 +527,7 @@ namespace Parsers {
 
 				token = reader.GetToken();
 				if (token.empty()) {
-					logger::warn("Line {}, Col {}: Expected decimal value '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					logger::warn("Line {}, Col {}: Expected decimal value.", reader.GetLastLine(), reader.GetLastLineIndex());
 					return std::nullopt;
 				}
 
@@ -540,8 +540,8 @@ namespace Parsers {
 			}
 
 			float parsedValue;
-			auto parsingResult = std::from_chars(numStr.data(), numStr.data() + numStr.size(), parsedValue);
-			if (parsingResult.ec != std::errc()) {
+			auto parseResult = std::from_chars(numStr.data(), numStr.data() + numStr.size(), parsedValue);
+			if (parseResult.ec != std::errc()) {
 				logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), numStr);
 				return std::nullopt;
 			}
@@ -552,20 +552,20 @@ namespace Parsers {
 		std::optional<std::uint32_t> ParseBipedSlot() {
 			auto token = reader.GetToken();
 			if (token.empty()) {
-				logger::warn("Line {}, Col {}: Expected BipedSlot '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				logger::warn("Line {}, Col {}: Expected bipedSlot.", reader.GetLastLine(), reader.GetLastLineIndex());
 				return std::nullopt;
 			}
 
 			unsigned long parsedValue = 0;
 
-			auto parsingResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-			if (parsingResult.ec != std::errc()) {
-				logger::warn("Line {}, Col {}: Failed to parse BipedSlot '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+			auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+			if (parseResult.ec != std::errc()) {
+				logger::warn("Line {}, Col {}: Failed to parse bipedSlot '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return std::nullopt;
 			}
 
 			if (parsedValue != 0 && (parsedValue < 30 || parsedValue > 61)) {
-				logger::warn("Line {}, Col {}: Failed to parse BipedSlot '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				logger::warn("Line {}, Col {}: Failed to parse bipedSlot '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return std::nullopt;
 			}
 
@@ -580,9 +580,9 @@ namespace Parsers {
 				return "0";
 			}
 
-			for (std::size_t ii = 0; ii < 32; ++ii) {
-				if (a_bipedObjSlots & (1u << ii)) {
-					retStr += std::to_string(ii + 30) + separator;
+			for (std::size_t slotIndex = 0; slotIndex < 32; ++slotIndex) {
+				if (a_bipedObjSlots & (1u << slotIndex)) {
+					retStr += std::to_string(slotIndex + 30) + separator;
 				}
 			}
 

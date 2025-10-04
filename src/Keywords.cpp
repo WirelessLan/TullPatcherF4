@@ -147,17 +147,23 @@ namespace Keywords {
 				return false;
 			}
 
-			token = reader.GetToken();
-			if (!token.starts_with('\"')) {
-				logger::warn("Line {}, Col {}: FullName must be a string.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
-			}
-			else if (!token.ends_with('\"')) {
-				logger::warn("Line {}, Col {}: String must end with '\"'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
-			}
+			if (a_config.Element == ElementType::kFullName) {
+				token = reader.GetToken();
+				if (!token.starts_with('\"')) {
+					logger::warn("Line {}, Col {}: FullName must be a string.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return false;
+				}
+				else if (!token.ends_with('\"')) {
+					logger::warn("Line {}, Col {}: String must end with '\"'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return false;
+				}
 
-			a_config.AssignValue = token.substr(1, token.length() - 2);
+				a_config.AssignValue = token.substr(1, token.length() - 2);
+			}
+			else {
+				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
+				return false;
+			}
 
 			return true;
 		}

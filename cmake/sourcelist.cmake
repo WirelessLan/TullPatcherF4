@@ -15,6 +15,8 @@ set(SOURCES
 	src/DefaultObjectManagers.cpp
 	src/FormLists.h
 	src/FormLists.cpp
+	src/ImageSpaceAdapters.h
+	src/ImageSpaceAdapters.cpp
 	src/Ingestibles.h
 	src/Ingestibles.cpp
 	src/Keywords.h

@@ -169,25 +169,25 @@ namespace Containers {
 
 			case ElementType::kItems:
 				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
-				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
+				for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); opIndex++) {
 					std::string opLog;
 
-					switch (a_configData.Operations[ii].OpType) {
+					switch (a_configData.Operations[opIndex].OpType) {
 					case OperationType::kClear:
-						opLog = std::format(".{}()", OperationTypeToString(a_configData.Operations[ii].OpType));
+						opLog = std::format(".{}()", OperationTypeToString(a_configData.Operations[opIndex].OpType));
 						break;
 
 					case OperationType::kAdd:
-						opLog = std::format(".{}({}, {})", OperationTypeToString(a_configData.Operations[ii].OpType), a_configData.Operations[ii].OpData->Form, a_configData.Operations[ii].OpData->Count);
+						opLog = std::format(".{}({}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType), a_configData.Operations[opIndex].OpData->Form, a_configData.Operations[opIndex].OpData->Count);
 						break;
 
 					case OperationType::kDelete:
 					case OperationType::kDeleteAll:
-						opLog = std::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType), a_configData.Operations[ii].OpData->Form);
+						opLog = std::format(".{}({})", OperationTypeToString(a_configData.Operations[opIndex].OpType), a_configData.Operations[opIndex].OpData->Form);
 						break;
 					}
 
-					if (ii == a_configData.Operations.size() - 1) {
+					if (opIndex == a_configData.Operations.size() - 1) {
 						opLog += ";";
 					}
 
@@ -266,7 +266,7 @@ namespace Containers {
 				a_config.AssignValue = std::string(token.substr(1, token.length() - 2));
 			}
 			else {
-				logger::warn("Line {}, Col {}: Invalid Assignment to {}.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
+				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
 				return false;
 			}
 
@@ -274,32 +274,36 @@ namespace Containers {
 		}
 
 		bool ParseOperation(ConfigData& a_configData) {
-			OperationType opType;
+			ConfigData::Operation newOp{};
 
 			auto token = reader.GetToken();
 			if (token == "Clear") {
-				opType = OperationType::kClear;
+				newOp.OpType = OperationType::kClear;
 			}
 			else if (token == "Add") {
-				opType = OperationType::kAdd;
+				newOp.OpType = OperationType::kAdd;
 			}
 			else if (token == "Delete") {
-				opType = OperationType::kDelete;
+				newOp.OpType = OperationType::kDelete;
 			}
 			else if (token == "DeleteAll") {
-				opType = OperationType::kDeleteAll;
+				newOp.OpType = OperationType::kDeleteAll;
 			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
 			}
 
-			if (opType == OperationType::kClear || opType == OperationType::kAdd || opType == OperationType::kDelete || opType == OperationType::kDeleteAll) {
-				if (a_configData.Element != ElementType::kItems) {
-					logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.", 
-						reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(opType));
-					return false;
+			bool isValidOperation = [](ElementType elem, OperationType op) {
+				if (elem == ElementType::kItems) {
+					return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete || op == OperationType::kDeleteAll;
 				}
+				return false;
+			}(a_configData.Element, newOp.OpType);
+
+			if (!isValidOperation) {
+				logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
+				return false;
 			}
 
 			token = reader.GetToken();
@@ -308,48 +312,45 @@ namespace Containers {
 				return false;
 			}
 
-			std::optional<ConfigData::Operation::Data> opData;
-			if (opType != OperationType::kClear) {
-				opData = ConfigData::Operation::Data{};
+			if (a_configData.Element == ElementType::kItems) {
+				if (newOp.OpType != OperationType::kClear) {
+					ConfigData::Operation::Data opData{};
 
-				if (opType == OperationType::kAdd) {
 					std::optional<std::string> form = ParseForm();
 					if (!form.has_value()) {
 						return false;
 					}
-					opData->Form = form.value();
+					opData.Form = form.value();
 
-					token = reader.GetToken();
-					if (token != ",") {
-						logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
-						return false;
+					if (newOp.OpType == OperationType::kAdd) {
+						token = reader.GetToken();
+						if (token != ",") {
+							logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
+							return false;
+						}
+
+						token = reader.GetToken();
+						if (token.empty()) {
+							logger::warn("Line {}, Col {}: Expected count.", reader.GetLastLine(), reader.GetLastLineIndex());
+							return false;
+						}
+
+						unsigned long parsedValue;
+						auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+						if (parseResult.ec != std::errc()) {
+							logger::warn("Line {}, Col {}: Failed to parse count '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+							return false;
+						}
+
+						if (parsedValue == 0 || parsedValue > UINT32_MAX) {
+							logger::warn("Line {}, Col {}: Count '{}' is out of range.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+							return false;
+						}
+
+						opData.Count = static_cast<std::uint32_t>(parsedValue);
 					}
 
-					token = reader.GetToken();
-					if (token.empty()) {
-						logger::warn("Line {}, Col {}: Syntax error. Expected Count.", reader.GetLastLine(), reader.GetLastLineIndex());
-						return false;
-					}
-
-					unsigned long parsedValue;
-					auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-					if (parseResult.ec != std::errc()) {
-						logger::warn("Line {}, Col {}: Failed to parse Count '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-						return false;
-					}
-
-					if (parsedValue == 0 || parsedValue > UINT32_MAX) {
-						logger::warn("Line {}, Col {}: Count '{}' is out of range.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-						return false;
-					}
-					opData->Count = static_cast<std::uint32_t>(parsedValue);
-				}
-				else if (opType == OperationType::kDelete || opType == OperationType::kDeleteAll) {
-					std::optional<std::string> form = ParseForm();
-					if (!form.has_value()) {
-						return false;
-					}
-					opData->Form = form.value();
+					newOp.OpData = opData;
 				}
 			}
 
@@ -359,7 +360,7 @@ namespace Containers {
 				return false;
 			}
 
-			a_configData.Operations.push_back(ConfigData::Operation{ opType, opData });
+			a_configData.Operations.push_back(newOp);
 
 			return true;
 		}

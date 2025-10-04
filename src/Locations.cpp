@@ -161,11 +161,11 @@ namespace Locations {
 
 			case ElementType::kKeywords:
 				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
-				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
-					std::string opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType),
-						a_configData.Operations[ii].OpForm.has_value() ? a_configData.Operations[ii].OpForm.value() : "");
+				for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); opIndex++) {
+					std::string opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+						a_configData.Operations[opIndex].OpForm.has_value() ? a_configData.Operations[opIndex].OpForm.value() : "");
 
-					if (ii == a_configData.Operations.size() - 1) {
+					if (opIndex == a_configData.Operations.size() - 1) {
 						opLog += ";";
 					}
 
@@ -243,28 +243,44 @@ namespace Locations {
 
 				a_config.AssignValue = std::string(token.substr(1, token.length() - 2));
 			}
+			else {
+				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
+				return false;
+			}
 
 			return true;
 		}
 
 		bool ParseOperation(ConfigData& a_configData) {
-			OperationType opType;
+			ConfigData::Operation newOp{};
 
 			auto token = reader.GetToken();
 			if (token == "Clear") {
-				opType = OperationType::kClear;
+				newOp.OpType = OperationType::kClear;
 			}
 			else if (token == "Add") {
-				opType = OperationType::kAdd;
+				newOp.OpType = OperationType::kAdd;
 			}
 			else if (token == "AddIfNotExists") {
-				opType = OperationType::kAddIfNotExists;
+				newOp.OpType = OperationType::kAddIfNotExists;
 			}
 			else if (token == "Delete") {
-				opType = OperationType::kDelete;
+				newOp.OpType = OperationType::kDelete;
 			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				return false;
+			}
+
+			bool isValidOperation = [](ElementType elem, OperationType op) {
+				if (elem == ElementType::kKeywords) {
+					return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kAddIfNotExists || op == OperationType::kDelete;
+				}
+				return false;
+			}(a_configData.Element, newOp.OpType);
+
+			if (!isValidOperation) {
+				logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
 				return false;
 			}
 
@@ -274,11 +290,13 @@ namespace Locations {
 				return false;
 			}
 
-			std::optional<std::string> opData;
-			if (opType != OperationType::kClear) {
-				opData = ParseForm();
-				if (!opData.has_value()) {
-					return false;
+			if (a_configData.Element == ElementType::kKeywords) {
+				if (newOp.OpType != OperationType::kClear) {
+					auto form = ParseForm();
+					if (!form.has_value()) {
+						return false;
+					}
+					newOp.OpForm = form.value();
 				}
 			}
 
@@ -288,7 +306,7 @@ namespace Locations {
 				return false;
 			}
 
-			a_configData.Operations.push_back({ opType, opData });
+			a_configData.Operations.push_back(newOp);
 
 			return true;
 		}
@@ -365,8 +383,8 @@ namespace Locations {
 	}
 
 	bool KeywordExists(RE::BGSLocation* a_location, RE::BGSKeyword* a_keyword) {
-		for (std::uint32_t ii = 0; ii < a_location->numKeywords; ii++) {
-			if (a_location->keywords[ii] == a_keyword) {
+		for (std::uint32_t keywordIndex = 0; keywordIndex < a_location->numKeywords; keywordIndex++) {
+			if (a_location->keywords[keywordIndex] == a_keyword) {
 				return true;
 			}
 		}

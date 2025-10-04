@@ -200,28 +200,30 @@ namespace Races {
 
 			case ElementType::kProperties:
 				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
-				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
+				for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); opIndex++) {
 					std::string opLog;
 
-					ConfigData::Operation::PropertyData propData = std::any_cast<ConfigData::Operation::PropertyData>(a_configData.Operations[ii].OpData.value());
-
-					switch (a_configData.Operations[ii].OpType) {
+					switch (a_configData.Operations[opIndex].OpType) {
 					case OperationType::kClear:
-						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[ii].OpType));
+						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[opIndex].OpType));
 						break;
 
-					case OperationType::kSet:
-						opLog = fmt::format(".{}({}, {})", OperationTypeToString(a_configData.Operations[ii].OpType),
+					case OperationType::kSet: {
+						ConfigData::Operation::PropertyData propData = std::any_cast<ConfigData::Operation::PropertyData>(a_configData.Operations[opIndex].OpData.value());
+						opLog = fmt::format(".{}({}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
 							propData.ActorValueForm, propData.Value);
-						break;
-
-					case OperationType::kDelete:
-						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType),
-							propData.ActorValueForm);
 						break;
 					}
 
-					if (ii == a_configData.Operations.size() - 1) {
+					case OperationType::kDelete: {
+						ConfigData::Operation::PropertyData propData = std::any_cast<ConfigData::Operation::PropertyData>(a_configData.Operations[opIndex].OpData.value());
+						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+							propData.ActorValueForm);
+						break;
+					}
+					}
+
+					if (opIndex == a_configData.Operations.size() - 1) {
 						opLog += ";";
 					}
 
@@ -232,23 +234,23 @@ namespace Races {
 			case ElementType::kMalePresets:
 			case ElementType::kFemalePresets:
 				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
-				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
+				for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); opIndex++) {
 					std::string opLog;
 
-					switch (a_configData.Operations[ii].OpType) {
+					switch (a_configData.Operations[opIndex].OpType) {
 					case OperationType::kClear:
-						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[ii].OpType));
+						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[opIndex].OpType));
 						break;
 
 					case OperationType::kAdd:
 					case OperationType::kAddIfNotExists:
 					case OperationType::kDelete:
-						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType),
-							std::any_cast<std::string>(a_configData.Operations[ii].OpData.value()));
+						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+							std::any_cast<std::string>(a_configData.Operations[opIndex].OpData.value()));
 						break;
 					}
 
-					if (ii == a_configData.Operations.size() - 1) {
+					if (opIndex == a_configData.Operations.size() - 1) {
 						opLog += ";";
 					}
 
@@ -393,7 +395,7 @@ namespace Races {
 				a_config.AssignValue = std::any(bipedObjectSlotsValue);
 			}
 			else {
-				logger::warn("Line {}, Col {}: Invalid Assignment to {}.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
+				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
 				return false;
 			}
 
@@ -401,7 +403,7 @@ namespace Races {
 		}
 
 		bool ParseOperation(ConfigData& a_config) {
-			ConfigData::Operation newOp;
+			ConfigData::Operation newOp{};
 
 			auto token = reader.GetToken();
 			if (token == "Clear") {
@@ -424,27 +426,20 @@ namespace Races {
 				return false;
 			}
 
-			switch (a_config.Element) {
-			case ElementType::kProperties:
-				if (newOp.OpType != OperationType::kClear && newOp.OpType != OperationType::kSet && newOp.OpType != OperationType::kDelete) {
-					logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.",
-						reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element), OperationTypeToString(newOp.OpType));
+			bool isValidOperation = [](ElementType elem, OperationType op) {
+				switch (elem) {
+				case ElementType::kProperties:
+					return op == OperationType::kClear || op == OperationType::kSet || op == OperationType::kDelete;
+				case ElementType::kMalePresets:
+				case ElementType::kFemalePresets:
+					return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kAddIfNotExists || op == OperationType::kDelete;
+				default:
 					return false;
 				}
-				break;
+			}(a_config.Element, newOp.OpType);
 
-			case ElementType::kMalePresets:
-			case ElementType::kFemalePresets:
-				if (newOp.OpType != OperationType::kClear && newOp.OpType != OperationType::kAdd && newOp.OpType != OperationType::kAddIfNotExists && newOp.OpType != OperationType::kDelete) {
-					logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.",
-						reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element), OperationTypeToString(newOp.OpType));
-					return false;
-				}
-				break;
-
-			default:
-				logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.",
-					reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element), OperationTypeToString(newOp.OpType));
+			if (!isValidOperation) {
+				logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element), OperationTypeToString(newOp.OpType));
 				return false;
 			}
 
@@ -456,9 +451,9 @@ namespace Races {
 
 			switch (a_config.Element) {
 			case ElementType::kProperties: {
-				ConfigData::Operation::PropertyData newPropData = ConfigData::Operation::PropertyData{};
-
 				if (newOp.OpType != OperationType::kClear) {
+					ConfigData::Operation::PropertyData newPropData{};
+
 					std::optional<std::string> opForm = ParseForm();
 					if (!opForm.has_value()) {
 						return false;
@@ -480,9 +475,9 @@ namespace Races {
 
 						newPropData.Value = opValue.value();
 					}
-				}
 
-				newOp.OpData = std::any(newPropData);
+					newOp.OpData = std::any(newPropData);
+				}
 
 				break;
 			}

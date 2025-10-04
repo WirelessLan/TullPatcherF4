@@ -525,11 +525,11 @@ namespace DefaultObjectManagers {
 			switch (a_configData.Element) {
 			case ElementType::kObjects:
 				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
-				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
-					std::string opLog = fmt::format(".{}({}, {})", OperationTypeToString(a_configData.Operations[ii].OpType),
-						a_configData.Operations[ii].OpData->Use, a_configData.Operations[ii].OpData->ObjectID);
+				for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); opIndex++) {
+					std::string opLog = fmt::format(".{}({}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+						a_configData.Operations[opIndex].OpData->Use, a_configData.Operations[opIndex].OpData->ObjectID);
 
-					if (ii == a_configData.Operations.size() - 1) {
+					if (opIndex == a_configData.Operations.size() - 1) {
 						opLog += ";";
 					}
 
@@ -585,15 +585,28 @@ namespace DefaultObjectManagers {
 		}
 
 		bool ParseOperation(ConfigData& a_configData) {
-			OperationType opType;
-			ConfigData::Operation::ObjectData objData;
+			ConfigData::Operation newOp{};
 
 			auto token = reader.GetToken();
 			if (token == "Set") {
-				opType = OperationType::kSet;
+				newOp.OpType = OperationType::kSet;
 			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				return false;
+			}
+
+			bool isValidOperation = [](ElementType elem, OperationType op) {
+				switch (elem) {
+				case ElementType::kObjects:
+					return op == OperationType::kSet;
+				default:
+					return false;
+				}
+			}(a_configData.Element, newOp.OpType);
+
+			if (!isValidOperation) {
+				logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
 				return false;
 			}
 
@@ -603,26 +616,31 @@ namespace DefaultObjectManagers {
 				return false;
 			}
 
-			token = reader.GetToken();
-			objData.Use = std::string(token);
+			if (a_configData.Element == ElementType::kObjects) {
+				ConfigData::Operation::ObjectData objData{};
 
-			token = reader.GetToken();
-			if (token != ",") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
-			}
+				token = reader.GetToken();
+				objData.Use = std::string(token);
 
-			token = reader.Peek();
-			if (token == "null") {
-				objData.ObjectID = reader.GetToken();
-			}
-			else {
-				std::optional<std::string> form = ParseForm();
-				if (!form.has_value()) {
+				token = reader.GetToken();
+				if (token != ",") {
+					logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
 					return false;
 				}
 
-				objData.ObjectID = form.value();
+				token = reader.Peek();
+				if (token == "null") {
+					objData.ObjectID = reader.GetToken();
+				}
+				else {
+					std::optional<std::string> form = ParseForm();
+					if (!form.has_value()) {
+						return false;
+					}
+					objData.ObjectID = form.value();
+				}
+
+				newOp.OpData = objData;
 			}
 
 			token = reader.GetToken();
@@ -631,7 +649,7 @@ namespace DefaultObjectManagers {
 				return false;
 			}
 
-			a_configData.Operations.push_back({ opType, objData });
+			a_configData.Operations.push_back(newOp);
 
 			return true;
 		}

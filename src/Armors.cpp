@@ -195,22 +195,22 @@ namespace Armors {
 
 			case ElementType::kKeywords:
 				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
-				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
+				for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); opIndex++) {
 					std::string opLog;
 
-					switch (a_configData.Operations[ii].OpType) {
+					switch (a_configData.Operations[opIndex].OpType) {
 					case OperationType::kClear:
-						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[ii].OpType));
+						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[opIndex].OpType));
 						break;
 
 					case OperationType::kAdd:
 					case OperationType::kDelete:
-						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType),
-							std::any_cast<std::string>(a_configData.Operations[ii].OpData.value()));
+						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+							std::any_cast<std::string>(a_configData.Operations[opIndex].OpData.value()));
 						break;
 					}
 
-					if (ii == a_configData.Operations.size() - 1) {
+					if (opIndex == a_configData.Operations.size() - 1) {
 						opLog += ";";
 					}
 
@@ -225,32 +225,33 @@ namespace Armors {
 
 			case ElementType::kResistances:
 				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
-				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
+				for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); opIndex++) {
 					std::string opLog;
 
-					switch (a_configData.Operations[ii].OpType) {
+					switch (a_configData.Operations[opIndex].OpType) {
 					case OperationType::kClear:
-						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[ii].OpType));
+						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[opIndex].OpType));
 						break;
 
 					case OperationType::kAdd:
-						opLog = fmt::format(".{}({}, {})", OperationTypeToString(a_configData.Operations[ii].OpType),
-							std::any_cast<ConfigData::Operation::ResistanceData>(a_configData.Operations[ii].OpData.value()).Form,
-							std::any_cast<ConfigData::Operation::ResistanceData>(a_configData.Operations[ii].OpData.value()).Value);
+						opLog = fmt::format(".{}({}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+							std::any_cast<ConfigData::Operation::ResistanceData>(a_configData.Operations[opIndex].OpData.value()).Form,
+							std::any_cast<ConfigData::Operation::ResistanceData>(a_configData.Operations[opIndex].OpData.value()).Value);
 						break;
 
 					case OperationType::kDelete:
-						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType),
-							std::any_cast<ConfigData::Operation::ResistanceData>(a_configData.Operations[ii].OpData.value()).Form);
+						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+							std::any_cast<ConfigData::Operation::ResistanceData>(a_configData.Operations[opIndex].OpData.value()).Form);
 						break;
 					}
 
-					if (ii == a_configData.Operations.size() - 1) {
+					if (opIndex == a_configData.Operations.size() - 1) {
 						opLog += ";";
 					}
 
 					logger::info("{}    {}", indent, opLog);
 				}
+				break;
 			}
 		}
 
@@ -324,13 +325,13 @@ namespace Armors {
 			if (a_config.Element == ElementType::kArmorRating) {
 				token = reader.GetToken();
 				if (token.empty()) {
-					logger::warn("Line {}, Col {}: Expected Value '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					logger::warn("Line {}, Col {}: Expected value.", reader.GetLastLine(), reader.GetLastLineIndex());
 					return false;
 				}
 
 				unsigned long parsedValue;
-				auto parsingResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-				if (parsingResult.ec != std::errc()) {
+				auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+				if (parseResult.ec != std::errc()) {
 					logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 					return false;
 				}
@@ -396,12 +397,11 @@ namespace Armors {
 					if (!effectForm.has_value()) {
 						return false;
 					}
-
 					a_config.AssignValue = std::any(std::string(effectForm.value()));
 				}
 			}
 			else {
-				logger::warn("Line {}, Col {}: Invalid Assignment to {}.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
+				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
 				return false;
 			}
 
@@ -409,7 +409,7 @@ namespace Armors {
 		}
 
 		bool ParseOperation(ConfigData& a_configData) {
-			ConfigData::Operation newOp;
+			ConfigData::Operation newOp{};
 
 			auto token = reader.GetToken();
 			if (token == "Clear") {
@@ -426,21 +426,19 @@ namespace Armors {
 				return false;
 			}
 
-			switch (a_configData.Element) {
-			case ElementType::kKeywords:
-			case ElementType::kResistances:
-				switch (newOp.OpType) {
-				case OperationType::kClear:
-				case OperationType::kAdd:
-				case OperationType::kDelete:
-					break;
-
-				default:
-					logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.",
-						reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
-					return false;
+			bool isValidOperation = [](ElementType elem, OperationType op) {
+				if (elem == ElementType::kKeywords) {
+					return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete;
 				}
-				break;
+				else if (elem == ElementType::kResistances) {
+					return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete;
+				}
+				return false;
+			}(a_configData.Element, newOp.OpType);
+
+			if (!isValidOperation) {
+				logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
+				return false;
 			}
 
 			token = reader.GetToken();
@@ -481,13 +479,13 @@ namespace Armors {
 
 						token = reader.GetToken();
 						if (token.empty()) {
-							logger::warn("Line {}, Col {}: Expected Value '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+							logger::warn("Line {}, Col {}: Expected value.", reader.GetLastLine(), reader.GetLastLineIndex());
 							return false;
 						}
 
 						unsigned long parsedValue;
-						auto parsingResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-						if (parsingResult.ec != std::errc()) {
+						auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+						if (parseResult.ec != std::errc()) {
 							logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 							return false;
 						}

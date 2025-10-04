@@ -379,32 +379,32 @@ namespace ObjectModifications {
 			switch (a_configData.Element) {
 			case ElementType::kProperties:
 				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
-				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
+				for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); opIndex++) {
 					std::string opLog;
 
-					switch (a_configData.Operations[ii].OpType) {
+					switch (a_configData.Operations[opIndex].OpType) {
 					case OperationType::kClear:
-						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[ii].OpType));
+						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[opIndex].OpType));
 						break;
 
 					case OperationType::kAdd:
-						if (a_configData.Operations[ii].OpData->ValueType == "Int") {
-							opLog = fmt::format(".{}({}, {}, {}, {}, {})", OperationTypeToString(a_configData.Operations[ii].OpType), a_configData.Operations[ii].OpData->ValueType, a_configData.Operations[ii].OpData->FunctionType, a_configData.Operations[ii].OpData->Property, std::any_cast<std::uint32_t>(a_configData.Operations[ii].OpData->Value1), std::any_cast<std::uint32_t>(a_configData.Operations[ii].OpData->Value2));
+						if (a_configData.Operations[opIndex].OpData->ValueType == "Int") {
+							opLog = fmt::format(".{}({}, {}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType), a_configData.Operations[opIndex].OpData->ValueType, a_configData.Operations[opIndex].OpData->FunctionType, a_configData.Operations[opIndex].OpData->Property, std::any_cast<std::uint32_t>(a_configData.Operations[opIndex].OpData->Value1), std::any_cast<std::uint32_t>(a_configData.Operations[opIndex].OpData->Value2));
 						}
-						else if (a_configData.Operations[ii].OpData->ValueType == "Float") {
-							opLog = fmt::format(".{}({}, {}, {}, {}, {})", OperationTypeToString(a_configData.Operations[ii].OpType), a_configData.Operations[ii].OpData->ValueType, a_configData.Operations[ii].OpData->FunctionType, a_configData.Operations[ii].OpData->Property, std::any_cast<float>(a_configData.Operations[ii].OpData->Value1), std::any_cast<float>(a_configData.Operations[ii].OpData->Value2));
+						else if (a_configData.Operations[opIndex].OpData->ValueType == "Float") {
+							opLog = fmt::format(".{}({}, {}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType), a_configData.Operations[opIndex].OpData->ValueType, a_configData.Operations[opIndex].OpData->FunctionType, a_configData.Operations[opIndex].OpData->Property, std::any_cast<float>(a_configData.Operations[opIndex].OpData->Value1), std::any_cast<float>(a_configData.Operations[opIndex].OpData->Value2));
 						} 
-						else if (a_configData.Operations[ii].OpData->ValueType == "Bool") {
-							opLog = fmt::format(".{}({}, {}, {}, {}, {})", OperationTypeToString(a_configData.Operations[ii].OpType), a_configData.Operations[ii].OpData->ValueType, a_configData.Operations[ii].OpData->FunctionType, a_configData.Operations[ii].OpData->Property, std::any_cast<bool>(a_configData.Operations[ii].OpData->Value1), std::any_cast<bool>(a_configData.Operations[ii].OpData->Value2));
+						else if (a_configData.Operations[opIndex].OpData->ValueType == "Bool") {
+							opLog = fmt::format(".{}({}, {}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType), a_configData.Operations[opIndex].OpData->ValueType, a_configData.Operations[opIndex].OpData->FunctionType, a_configData.Operations[opIndex].OpData->Property, std::any_cast<bool>(a_configData.Operations[opIndex].OpData->Value1), std::any_cast<bool>(a_configData.Operations[opIndex].OpData->Value2));
 						}
-						else if (a_configData.Operations[ii].OpData->ValueType == "Enum") {
-							opLog = fmt::format(".{}({}, {}, {}, {})", OperationTypeToString(a_configData.Operations[ii].OpType), a_configData.Operations[ii].OpData->ValueType, a_configData.Operations[ii].OpData->FunctionType, a_configData.Operations[ii].OpData->Property, std::any_cast<std::uint32_t>(a_configData.Operations[ii].OpData->Value1));
+						else if (a_configData.Operations[opIndex].OpData->ValueType == "Enum") {
+							opLog = fmt::format(".{}({}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType), a_configData.Operations[opIndex].OpData->ValueType, a_configData.Operations[opIndex].OpData->FunctionType, a_configData.Operations[opIndex].OpData->Property, std::any_cast<std::uint32_t>(a_configData.Operations[opIndex].OpData->Value1));
 						}
-						else if (a_configData.Operations[ii].OpData->ValueType == "FormIDInt") {
-							opLog = fmt::format(".{}({}, {}, {}, {})", OperationTypeToString(a_configData.Operations[ii].OpType), a_configData.Operations[ii].OpData->ValueType, a_configData.Operations[ii].OpData->FunctionType, a_configData.Operations[ii].OpData->Property, std::any_cast<std::string>(a_configData.Operations[ii].OpData->Value1));
+						else if (a_configData.Operations[opIndex].OpData->ValueType == "FormIDInt") {
+							opLog = fmt::format(".{}({}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType), a_configData.Operations[opIndex].OpData->ValueType, a_configData.Operations[opIndex].OpData->FunctionType, a_configData.Operations[opIndex].OpData->Property, std::any_cast<std::string>(a_configData.Operations[opIndex].OpData->Value1));
 						}
-						else if (a_configData.Operations[ii].OpData->ValueType == "FormIDFloat") {
-							opLog = fmt::format(".{}({}, {}, {}, {}, {})", OperationTypeToString(a_configData.Operations[ii].OpType), a_configData.Operations[ii].OpData->ValueType, a_configData.Operations[ii].OpData->FunctionType, a_configData.Operations[ii].OpData->Property, std::any_cast<std::string>(a_configData.Operations[ii].OpData->Value1), std::any_cast<float>(a_configData.Operations[ii].OpData->Value2));
+						else if (a_configData.Operations[opIndex].OpData->ValueType == "FormIDFloat") {
+							opLog = fmt::format(".{}({}, {}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType), a_configData.Operations[opIndex].OpData->ValueType, a_configData.Operations[opIndex].OpData->FunctionType, a_configData.Operations[opIndex].OpData->Property, std::any_cast<std::string>(a_configData.Operations[opIndex].OpData->Value1), std::any_cast<float>(a_configData.Operations[opIndex].OpData->Value2));
 						}
 						break;
 
@@ -412,7 +412,7 @@ namespace ObjectModifications {
 						break;
 					}
 
-					if (ii == a_configData.Operations.size() - 1) {
+					if (opIndex == a_configData.Operations.size() - 1) {
 						opLog += ";";
 					}
 
@@ -466,15 +466,29 @@ namespace ObjectModifications {
 		}
 
 		bool ParseOperation(ConfigData& a_configData) {
-			OperationType opType;
+			ConfigData::Operation newOp{};
 
 			auto token = reader.GetToken();
 			if (token == "Clear") {
-				opType = OperationType::kClear;
+				newOp.OpType = OperationType::kClear;
 			} else if (token == "Add") {
-				opType = OperationType::kAdd;
+				newOp.OpType = OperationType::kAdd;
 			} else {
 				logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				return false;
+			}
+
+			bool isValidOperation = [](ElementType elem, OperationType op) {
+				switch (elem) {
+				case ElementType::kProperties:
+					return (op == OperationType::kClear || op == OperationType::kAdd);
+				default:
+					return false;
+				}
+			}(a_configData.Element, newOp.OpType);
+
+			if (!isValidOperation) {
+				logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
 				return false;
 			}
 
@@ -484,67 +498,16 @@ namespace ObjectModifications {
 				return false;
 			}
 
-			std::optional<ConfigData::Operation::Data> opData;
-			if (opType != OperationType::kClear) {
-				opData = ConfigData::Operation::Data{};
+			if (a_configData.Element == ElementType::kProperties) {
+				if (newOp.OpType != OperationType::kClear) {
+					ConfigData::Operation::Data opData{};
 
-				auto valueType = ParseValueType();
-				if (!valueType.has_value()) {
-					return false;
-				}
-
-				opData->ValueType = valueType.value();
-
-				token = reader.GetToken();
-				if (token != ",") {
-					logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
-					return false;
-				}
-
-				auto funcType = ParseFunctionType();
-				if (!funcType.has_value()) {
-					return false;
-				}
-
-				opData->FunctionType = funcType.value();
-
-				token = reader.GetToken();
-				if (token != ",") {
-					logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
-					return false;
-				}
-
-				auto prop = ParseProperty();
-				if (!prop.has_value()) {
-					return false;
-				}
-
-				opData->Property = prop.value();
-
-				token = reader.GetToken();
-				if (token != ",") {
-					logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
-					return false;
-				}
-
-				if (opData->ValueType == "Int" || opData->ValueType == "Float") {
-					if (opData->FunctionType != "SET" &&
-						opData->FunctionType != "ADD" &&
-						opData->FunctionType != "MULADD") {
-						logger::warn("Line {}, Col {}: Invalid function type for {} '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), opData->ValueType, opData->FunctionType);
-						return false;
-					}
-					
-					auto value1 = ParseNumber();
-					if (!value1.has_value()) {
+					auto valueType = ParseValueType();
+					if (!valueType.has_value()) {
 						return false;
 					}
 
-					if (opData->ValueType == "Int") {
-						opData->Value1 = std::any(static_cast<std::uint32_t>(value1.value()));
-					} else {
-						opData->Value1 = std::any(value1.value());
-					}
+					opData.ValueType = valueType.value();
 
 					token = reader.GetToken();
 					if (token != ",") {
@@ -552,31 +515,12 @@ namespace ObjectModifications {
 						return false;
 					}
 
-					auto value2 = ParseNumber();
-					if (!value2.has_value()) {
+					auto funcType = ParseFunctionType();
+					if (!funcType.has_value()) {
 						return false;
 					}
 
-					if (opData->ValueType == "Int") {
-						opData->Value2 = std::any(static_cast<std::uint32_t>(value2.value()));
-					} else {
-						opData->Value2 = std::any(value2.value());
-					}
-				}
-				else if (opData->ValueType == "Bool") {
-					if (opData->FunctionType != "SET" &&
-						opData->FunctionType != "AND" &&
-						opData->FunctionType != "OR") {
-						logger::warn("Line {}, Col {}: Invalid function type for {} '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), opData->ValueType, opData->FunctionType);
-						return false;
-					}
-
-					auto value1 = ParseBool();
-					if (!value1.has_value()) {
-						return false;
-					}
-
-					opData->Value1 = std::any(value1.value());
+					opData.FunctionType = funcType.value();
 
 					token = reader.GetToken();
 					if (token != ",") {
@@ -584,42 +528,53 @@ namespace ObjectModifications {
 						return false;
 					}
 
-					auto value2 = ParseBool();
-					if (!value2.has_value()) {
+					auto prop = ParseProperty();
+					if (!prop.has_value()) {
 						return false;
 					}
 
-					opData->Value2 = std::any(value2.value());
-				}
-				else if (opData->ValueType == "Enum") {
-					if (opData->FunctionType != "SET") {
-						logger::warn("Line {}, Col {}: Invalid function type for {} '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), opData->ValueType, opData->FunctionType);
+					opData.Property = prop.value();
+
+					token = reader.GetToken();
+					if (token != ",") {
+						logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
 						return false;
 					}
 
-					auto value1 = ParseNumber();
-					if (!value1.has_value()) {
+					bool isValidFunctionType = [](std::string_view valueType, std::string_view funcType) {
+						if (valueType == "Int" || valueType == "Float") {
+							return funcType == "SET" || funcType == "ADD" || funcType == "MULADD";
+						}
+						else if (valueType == "Bool") {
+							return funcType == "SET" || funcType == "AND" || funcType == "OR";
+						}
+						else if (valueType == "Enum") {
+							return funcType == "SET";
+						}
+						else if (valueType == "FormIDInt" || valueType == "FormIDFloat") {
+							return funcType == "SET" || funcType == "REM" || funcType == "ADD";
+						}
+						return false;
+					}(opData.ValueType, opData.FunctionType);
+
+					if (!isValidFunctionType) {
+						logger::warn("Line {}, Col {}: Invalid function type for {} '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), opData.ValueType, opData.FunctionType);
 						return false;
 					}
 
-					opData->Value1 = std::any(static_cast<std::uint32_t>(value1.value()));
-				}
-				else if (opData->ValueType == "FormIDInt" || opData->ValueType == "FormIDFloat") {
-					if (opData->FunctionType != "SET" &&
-						opData->FunctionType != "REM" &&
-						opData->FunctionType != "ADD") {
-						logger::warn("Line {}, Col {}: Invalid function type for {} '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), opData->ValueType, opData->FunctionType);
-						return false;
-					}
+					if (opData.ValueType == "Int" || opData.ValueType == "Float") {
+						auto value1 = ParseNumber();
+						if (!value1.has_value()) {
+							return false;
+						}
 
-					auto value1 = ParseForm();
-					if (!value1.has_value()) {
-						return false;
-					}
+						if (opData.ValueType == "Int") {
+							opData.Value1 = std::any(static_cast<std::uint32_t>(value1.value()));
+						}
+						else if (opData.ValueType == "Float") {
+							opData.Value1 = std::any(value1.value());
+						}
 
-					opData->Value1 = std::any(value1.value());
-
-					if (opData->ValueType == "FormIDFloat") {
 						token = reader.GetToken();
 						if (token != ",") {
 							logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
@@ -631,8 +586,67 @@ namespace ObjectModifications {
 							return false;
 						}
 
-						opData->Value2 = std::any(value2.value());
+						if (opData.ValueType == "Int") {
+							opData.Value2 = std::any(static_cast<std::uint32_t>(value2.value()));
+						}
+						else if (opData.ValueType == "Float") {
+							opData.Value2 = std::any(value2.value());
+						}
 					}
+					else if (opData.ValueType == "Bool") {
+						auto value1 = ParseBool();
+						if (!value1.has_value()) {
+							return false;
+						}
+
+						opData.Value1 = std::any(value1.value());
+
+						token = reader.GetToken();
+						if (token != ",") {
+							logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
+							return false;
+						}
+
+						auto value2 = ParseBool();
+						if (!value2.has_value()) {
+							return false;
+						}
+
+						opData.Value2 = std::any(value2.value());
+					}
+					else if (opData.ValueType == "Enum") {
+						auto value1 = ParseNumber();
+						if (!value1.has_value()) {
+							return false;
+						}
+
+						opData.Value1 = std::any(static_cast<std::uint32_t>(value1.value()));
+					}
+					else if (opData.ValueType == "FormIDInt" || opData.ValueType == "FormIDFloat") {
+						auto value1 = ParseForm();
+						if (!value1.has_value()) {
+							return false;
+						}
+
+						opData.Value1 = std::any(value1.value());
+
+						if (opData.ValueType == "FormIDFloat") {
+							token = reader.GetToken();
+							if (token != ",") {
+								logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
+								return false;
+							}
+
+							auto value2 = ParseNumber();
+							if (!value2.has_value()) {
+								return false;
+							}
+
+							opData.Value2 = std::any(value2.value());
+						}
+					}
+
+					newOp.OpData = opData;
 				}
 			}
 
@@ -642,7 +656,7 @@ namespace ObjectModifications {
 				return false;
 			}
 
-			a_configData.Operations.push_back({ opType, opData });
+			a_configData.Operations.push_back(newOp);
 
 			return true;
 		}

@@ -228,22 +228,22 @@ namespace NPCs {
 			switch (a_configData.Element) {
 			case ElementType::kHeadParts:
 				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
-				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
+				for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); opIndex++) {
 					std::string opLog;
 
-					switch (a_configData.Operations[ii].OpType) {
+					switch (a_configData.Operations[opIndex].OpType) {
 					case OperationType::kClear:
-						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[ii].OpType));
+						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[opIndex].OpType));
 						break;
 
 					case OperationType::kAdd:
 					case OperationType::kDelete:
-						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType),
-							std::any_cast<std::string>(a_configData.Operations[ii].OpData.value()));
+						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+							std::any_cast<std::string>(a_configData.Operations[opIndex].OpData.value()));
 						break;
 					}
 
-					if (ii == a_configData.Operations.size() - 1) {
+					if (opIndex == a_configData.Operations.size() - 1) {
 						opLog += ";";
 					}
 
@@ -253,27 +253,27 @@ namespace NPCs {
 
 			case ElementType::kMorphs:
 				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
-				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
+				for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); opIndex++) {
 					std::string opLog;
 
-					switch (a_configData.Operations[ii].OpType) {
+					switch (a_configData.Operations[opIndex].OpType) {
 					case OperationType::kClear:
-						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[ii].OpType));
+						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[opIndex].OpType));
 						break;
 
 					case OperationType::kSet:
-						opLog = fmt::format(".{}({:08X}, {})", OperationTypeToString(a_configData.Operations[ii].OpType),
-							std::any_cast<ConfigData::Operation::MorphData>(a_configData.Operations[ii].OpData.value()).Key,
-							std::any_cast<ConfigData::Operation::MorphData>(a_configData.Operations[ii].OpData.value()).Value);
+						opLog = fmt::format(".{}({:08X}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+							std::any_cast<ConfigData::Operation::MorphData>(a_configData.Operations[opIndex].OpData.value()).Key,
+							std::any_cast<ConfigData::Operation::MorphData>(a_configData.Operations[opIndex].OpData.value()).Value);
 						break;
 
 					case OperationType::kDelete:
-						opLog = fmt::format(".{}({:08X})", OperationTypeToString(a_configData.Operations[ii].OpType),
-							std::any_cast<ConfigData::Operation::MorphData>(a_configData.Operations[ii].OpData.value()).Key);
+						opLog = fmt::format(".{}({:08X})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+							std::any_cast<ConfigData::Operation::MorphData>(a_configData.Operations[opIndex].OpData.value()).Key);
 						break;
 					}
 
-					if (ii == a_configData.Operations.size() - 1) {
+					if (opIndex == a_configData.Operations.size() - 1) {
 						opLog += ";";
 					}
 
@@ -283,30 +283,30 @@ namespace NPCs {
 
 			case ElementType::kTints:
 				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
-				for (std::size_t ii = 0; ii < a_configData.Operations.size(); ii++) {
+				for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); opIndex++) {
 					std::string opLog;
 
-					switch (a_configData.Operations[ii].OpType) {
+					switch (a_configData.Operations[opIndex].OpType) {
 					case OperationType::kClear:
-						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[ii].OpType));
+						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[opIndex].OpType));
 						break;
 
 					case OperationType::kSet:
-						opLog = fmt::format(".{}({}, {}, {}, {}, {})", OperationTypeToString(a_configData.Operations[ii].OpType),
-							std::any_cast<ConfigData::Operation::TintData>(a_configData.Operations[ii].OpData.value()).Index,
-							std::any_cast<ConfigData::Operation::TintData>(a_configData.Operations[ii].OpData.value()).Color & 0xFF,
-							(std::any_cast<ConfigData::Operation::TintData>(a_configData.Operations[ii].OpData.value()).Color >> 8) & 0xFF,
-							(std::any_cast<ConfigData::Operation::TintData>(a_configData.Operations[ii].OpData.value()).Color >> 16) & 0xFF,
-							std::any_cast<ConfigData::Operation::TintData>(a_configData.Operations[ii].OpData.value()).Alpha);
+						opLog = fmt::format(".{}({}, {}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+							std::any_cast<ConfigData::Operation::TintData>(a_configData.Operations[opIndex].OpData.value()).Index,
+							std::any_cast<ConfigData::Operation::TintData>(a_configData.Operations[opIndex].OpData.value()).Color & UINT8_MAX,
+							(std::any_cast<ConfigData::Operation::TintData>(a_configData.Operations[opIndex].OpData.value()).Color >> 8) & UINT8_MAX,
+							(std::any_cast<ConfigData::Operation::TintData>(a_configData.Operations[opIndex].OpData.value()).Color >> 16) & UINT8_MAX,
+							std::any_cast<ConfigData::Operation::TintData>(a_configData.Operations[opIndex].OpData.value()).Alpha);
 						break;
 
 					case OperationType::kDelete:
-						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[ii].OpType),
-							std::any_cast<ConfigData::Operation::TintData>(a_configData.Operations[ii].OpData.value()).Index);
+						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+							std::any_cast<ConfigData::Operation::TintData>(a_configData.Operations[opIndex].OpData.value()).Index);
 						break;
 					}
 
-					if (ii == a_configData.Operations.size() - 1) {
+					if (opIndex == a_configData.Operations.size() - 1) {
 						opLog += ";";
 					}
 
@@ -326,11 +326,15 @@ namespace NPCs {
 			case ElementType::kClass:
 			case ElementType::kCombatStyle:
 			case ElementType::kDefaultOutfit:
-			case ElementType::kFullName:
 			case ElementType::kHairColor:
 			case ElementType::kHeadTexture:
 			case ElementType::kRace:
 			case ElementType::kSkin:
+				logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
+					ElementTypeToString(a_configData.Element), std::any_cast<std::string>(a_configData.AssignValue.value()));
+				break;
+
+			case ElementType::kFullName:
 				logger::info("{}{}({}).{} = \"{}\";", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
 					ElementTypeToString(a_configData.Element), std::any_cast<std::string>(a_configData.AssignValue.value()));
 				break;
@@ -461,7 +465,6 @@ namespace NPCs {
 					if (!form.has_value()) {
 						return false;
 					}
-
 					a_config.AssignValue = std::any(form.value());
 				}
 			}
@@ -503,13 +506,13 @@ namespace NPCs {
 			else if (a_config.Element == ElementType::kSex) {
 				token = reader.GetToken();
 				if (token.empty()) {
-					logger::warn("Line {}, Col {}: Expected Sex '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					logger::warn("Line {}, Col {}: Expected sex.", reader.GetLastLine(), reader.GetLastLineIndex());
 					return false;
 				}
 
 				unsigned long parsedValue;
-				auto parsingResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-				if (parsingResult.ec != std::errc()) {
+				auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+				if (parseResult.ec != std::errc()) {
 					logger::warn("Line {}, Col {}: Failed to parse sex '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 					return false;
 				}
@@ -521,12 +524,16 @@ namespace NPCs {
 
 				a_config.AssignValue = std::any(static_cast<std::uint8_t>(parsedValue));
 			}
+			else {
+				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
+				return false;
+			}
 
 			return true;
 		}
 
 		bool ParseOperation(ConfigData& a_config) {
-			ConfigData::Operation newOp;
+			ConfigData::Operation newOp{};
 
 			auto token = reader.GetToken();
 			if (token == "Clear") {
@@ -546,27 +553,20 @@ namespace NPCs {
 				return false;
 			}
 
-			switch (a_config.Element) {
-			case ElementType::kHeadParts:
-				if (newOp.OpType != OperationType::kClear && newOp.OpType != OperationType::kAdd && newOp.OpType != OperationType::kDelete) {
-					logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.",
-						reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element), OperationTypeToString(newOp.OpType));
+			bool isValidOperation = [](ElementType elem, OperationType op) {
+				switch (elem) {
+				case ElementType::kHeadParts:
+					return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete;
+				case ElementType::kMorphs:
+				case ElementType::kTints:
+					return op == OperationType::kClear || op == OperationType::kSet || op == OperationType::kDelete;
+				default:
 					return false;
 				}
-				break;
+			}(a_config.Element, newOp.OpType);
 
-			case ElementType::kMorphs:
-			case ElementType::kTints:
-				if (newOp.OpType != OperationType::kClear && newOp.OpType != OperationType::kSet && newOp.OpType != OperationType::kDelete) {
-					logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.",
-						reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element), OperationTypeToString(newOp.OpType));
-					return false;
-				}
-				break;
-
-			default:
-				logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.",
-					reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element), OperationTypeToString(newOp.OpType));
+			if (!isValidOperation) {
+				logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element), OperationTypeToString(newOp.OpType));
 				return false;
 			}
 
@@ -631,20 +631,20 @@ namespace NPCs {
 					ConfigData::Operation::TintData tintData{};
 
 					token = reader.GetToken();
-					if (token.empty() || token == ",") {
-						logger::warn("Line {}, Col {}: Expected TintIndex '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					if (token.empty()) {
+						logger::warn("Line {}, Col {}: Expected tintIndex.", reader.GetLastLine(), reader.GetLastLineIndex());
 						return false;
 					}
 
 					unsigned long parsedValue;
-					auto parsingResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-					if (parsingResult.ec != std::errc()) {
-						logger::warn("Line {}, Col {}: Failed to parse TintIndex '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+					if (parseResult.ec != std::errc()) {
+						logger::warn("Line {}, Col {}: Failed to parse tintIndex '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 						return false;
 					}
 
-					if (parsedValue > 0xFFFF) {
-						logger::warn("Line {}, Col {}: Invalid TintIndex '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					if (parsedValue > UINT16_MAX) {
+						logger::warn("Line {}, Col {}: Invalid tintIndex '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 						return false;
 					}
 
@@ -659,18 +659,18 @@ namespace NPCs {
 
 						token = reader.GetToken();
 						if (token.empty()) {
-							logger::warn("Line {}, Col {}: Expected TintColorRed '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+							logger::warn("Line {}, Col {}: Expected tintColorRed.", reader.GetLastLine(), reader.GetLastLineIndex());
 							return false;
 						}
 
-						parsingResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-						if (parsingResult.ec != std::errc()) {
-							logger::warn("Line {}, Col {}: Failed to parse TintColorRed '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+						parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+						if (parseResult.ec != std::errc()) {
+							logger::warn("Line {}, Col {}: Failed to parse tintColorRed '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 							return false;
 						}
 
-						if (parsedValue > 0xFF) {
-							logger::warn("Line {}, Col {}: Invalid TintColorRed '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+						if (parsedValue > UINT8_MAX) {
+							logger::warn("Line {}, Col {}: Invalid tintColorRed '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 							return false;
 						}
 
@@ -684,18 +684,18 @@ namespace NPCs {
 
 						token = reader.GetToken();
 						if (token.empty()) {
-							logger::warn("Line {}, Col {}: Expected TintColorGreen '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+							logger::warn("Line {}, Col {}: Expected tintColorGreen.", reader.GetLastLine(), reader.GetLastLineIndex());
 							return false;
 						}
 
-						parsingResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-						if (parsingResult.ec != std::errc()) {
-							logger::warn("Line {}, Col {}: Failed to parse TintColorGreen '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+						parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+						if (parseResult.ec != std::errc()) {
+							logger::warn("Line {}, Col {}: Failed to parse tintColorGreen '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 							return false;
 						}
 
-						if (parsedValue > 0xFF) {
-							logger::warn("Line {}, Col {}: Invalid TintColorGreen '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+						if (parsedValue > UINT8_MAX) {
+							logger::warn("Line {}, Col {}: Invalid tintColorGreen '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 							return false;
 						}
 
@@ -709,18 +709,18 @@ namespace NPCs {
 
 						token = reader.GetToken();
 						if (token.empty()) {
-							logger::warn("Line {}, Col {}: Expected TintColorBlue '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+							logger::warn("Line {}, Col {}: Expected tintColorBlue.", reader.GetLastLine(), reader.GetLastLineIndex());
 							return false;
 						}
 
-						parsingResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-						if (parsingResult.ec != std::errc()) {
-							logger::warn("Line {}, Col {}: Failed to parse TintColorBlue '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+						parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
+						if (parseResult.ec != std::errc()) {
+							logger::warn("Line {}, Col {}: Failed to parse tintColorBlue '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 							return false;
 						}
 
-						if (parsedValue > 0xFF) {
-							logger::warn("Line {}, Col {}: Invalid TintColorBlue '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+						if (parsedValue > UINT8_MAX) {
+							logger::warn("Line {}, Col {}: Invalid tintColorBlue '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 							return false;
 						}
 
@@ -740,7 +740,7 @@ namespace NPCs {
 						}
 
 						if (tintAlpha.value() < 0.0f || tintAlpha.value() > 1.0f) {
-							logger::warn("Line {}, Col {}: Invalid TintAlpha '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+							logger::warn("Line {}, Col {}: Invalid tintAlpha '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 							return false;
 						}
 
@@ -1131,7 +1131,7 @@ namespace NPCs {
 		// Delete
 		if (tintingData) {
 			for (auto deleteIndex : a_tintsData.DeleteTintVec) {
-				SetTintingData(a_npc, deleteIndex, 0, 0xFFFFFFFF);
+				SetTintingData(a_npc, deleteIndex, 0, UINT32_MAX);
 			}
 		}
 

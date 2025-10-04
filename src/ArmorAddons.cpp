@@ -184,7 +184,7 @@ namespace ArmorAddons {
 				a_config.AssignValue = bipedObjectSlotsValue;
 			}
 			else {
-				logger::warn("Line {}, Col {}: Invalid Assignment to {}.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
+				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
 				return false;
 			}
 

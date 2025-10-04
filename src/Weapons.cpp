@@ -119,6 +119,7 @@ namespace Weapons {
 				logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
 					ElementTypeToString(a_configData.Element), std::any_cast<std::string>(a_configData.AssignValue.value()));
 				break;
+
 			case ElementType::kAttackDelay:
 			case ElementType::kMaxRange:
 			case ElementType::kMinRange:
@@ -217,7 +218,6 @@ namespace Weapons {
 					if (!effectForm.has_value()) {
 						return false;
 					}
-
 					a_config.AssignValue = std::any(effectForm.value());
 				}
 			}
@@ -231,7 +231,7 @@ namespace Weapons {
 				a_config.AssignValue = std::any(floatValue.value());
 			}
 			else {
-				logger::warn("Line {}, Col {}: Invalid Assignment to {}.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
+				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
 				return false;
 			}
 
