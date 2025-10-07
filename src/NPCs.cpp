@@ -294,9 +294,9 @@ namespace NPCs {
 					case OperationType::kSet:
 						opLog = fmt::format(".{}({}, {}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
 							std::any_cast<ConfigData::Operation::TintData>(a_configData.Operations[opIndex].OpData.value()).Index,
-							std::any_cast<ConfigData::Operation::TintData>(a_configData.Operations[opIndex].OpData.value()).Color & UINT8_MAX,
-							(std::any_cast<ConfigData::Operation::TintData>(a_configData.Operations[opIndex].OpData.value()).Color >> 8) & UINT8_MAX,
-							(std::any_cast<ConfigData::Operation::TintData>(a_configData.Operations[opIndex].OpData.value()).Color >> 16) & UINT8_MAX,
+							std::any_cast<ConfigData::Operation::TintData>(a_configData.Operations[opIndex].OpData.value()).Color & static_cast<std::uint32_t>(UINT8_MAX),
+							(std::any_cast<ConfigData::Operation::TintData>(a_configData.Operations[opIndex].OpData.value()).Color >> 8) & static_cast<std::uint32_t>(UINT8_MAX),
+							(std::any_cast<ConfigData::Operation::TintData>(a_configData.Operations[opIndex].OpData.value()).Color >> 16) & static_cast<std::uint32_t>(UINT8_MAX),
 							std::any_cast<ConfigData::Operation::TintData>(a_configData.Operations[opIndex].OpData.value()).Alpha);
 						break;
 
@@ -595,11 +595,17 @@ namespace NPCs {
 
 					token = reader.GetToken();
 					if (!IsHexString(token)) {
-						logger::warn("Line {}, Col {}: Expected MorphKey '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+						logger::warn("Line {}, Col {}: Expected morphKey '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 						return false;
 					}
 
-					morphData.Key = Utils::ParseHex(token);
+					auto morphKey = Utils::ParseHex(token);
+					if (!morphKey.has_value()) {
+						logger::warn("Line {}, Col {}: Failed to parse morphKey '{}'. The value must be a hexadecimal number.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+						return false;
+					}
+
+					morphData.Key = morphKey.value();
 
 					if (newOp.OpType == OperationType::kSet) {
 						token = reader.GetToken();
@@ -614,7 +620,7 @@ namespace NPCs {
 						}
 
 						if (morphValue.value() < 0.0f || morphValue.value() > 1.0f) {
-							logger::warn("Line {}, Col {}: Invalid MorphValue '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), morphValue.value());
+							logger::warn("Line {}, Col {}: Invalid morphValue '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), morphValue.value());
 							return false;
 						}
 
@@ -643,7 +649,7 @@ namespace NPCs {
 						return false;
 					}
 
-					if (parsedValue > UINT16_MAX) {
+					if (parsedValue > static_cast<unsigned long>(UINT16_MAX)) {
 						logger::warn("Line {}, Col {}: Invalid tintIndex '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 						return false;
 					}
@@ -669,7 +675,7 @@ namespace NPCs {
 							return false;
 						}
 
-						if (parsedValue > UINT8_MAX) {
+						if (parsedValue > static_cast<unsigned long>(UINT8_MAX)) {
 							logger::warn("Line {}, Col {}: Invalid tintColorRed '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 							return false;
 						}
@@ -694,7 +700,7 @@ namespace NPCs {
 							return false;
 						}
 
-						if (parsedValue > UINT8_MAX) {
+						if (parsedValue > static_cast<unsigned long>(UINT8_MAX)) {
 							logger::warn("Line {}, Col {}: Invalid tintColorGreen '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 							return false;
 						}
@@ -719,7 +725,7 @@ namespace NPCs {
 							return false;
 						}
 
-						if (parsedValue > UINT8_MAX) {
+						if (parsedValue > static_cast<unsigned long>(UINT8_MAX)) {
 							logger::warn("Line {}, Col {}: Invalid tintColorBlue '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 							return false;
 						}

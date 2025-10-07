@@ -294,11 +294,11 @@ namespace LeveledLists {
 				return false;
 			}
 
-			if (parsedValue > UINT8_MAX) {
+			if (parsedValue > static_cast<unsigned long>(UINT8_MAX)) {
 				logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
 			}
-			else if (a_configData.Element == ElementType::kFlags && parsedValue > 7) {
+			else if (a_configData.Element == ElementType::kFlags && parsedValue > 7lu) {
 				logger::warn("Line {}, Col {}: Failed to parse Flags '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return false;
 			}
@@ -365,7 +365,7 @@ namespace LeveledLists {
 							return false;
 						}
 
-						if (parsedValue > UINT16_MAX) {
+						if (parsedValue > static_cast<unsigned long>(UINT16_MAX)) {
 							logger::warn("Line {}, Col {}: Failed to parse level '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 							return false;
 						}
@@ -403,7 +403,7 @@ namespace LeveledLists {
 							return false;
 						}
 
-						if (parsedValue > UINT16_MAX) {
+						if (parsedValue > static_cast<unsigned long>(UINT16_MAX)) {
 							logger::warn("Line {}, Col {}: Failed to parse count '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 							return false;
 						}
@@ -428,7 +428,7 @@ namespace LeveledLists {
 							return false;
 						}
 
-						if (parsedValue > UINT8_MAX) {
+						if (parsedValue > static_cast<unsigned long>(UINT8_MAX)) {
 							logger::warn("Line {}, Col {}: Failed to parse chanceNone '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 							return false;
 						}
@@ -572,9 +572,9 @@ namespace LeveledLists {
 		}
 
 		std::size_t entriesCnt = a_entries.size();
-		if (entriesCnt > UINT8_MAX) {
+		if (entriesCnt > static_cast<std::size_t>(UINT8_MAX)) {
 			logger::critical("Entries size is bigger than 255. The entries size has been set to 255.");
-			entriesCnt = UINT8_MAX;
+			entriesCnt = static_cast<std::size_t>(UINT8_MAX);
 		}
 
 		LL_ALLOC* newEntries = AllocateLL(entriesCnt);

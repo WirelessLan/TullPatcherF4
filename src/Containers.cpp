@@ -342,7 +342,7 @@ namespace Containers {
 							return false;
 						}
 
-						if (parsedValue == 0 || parsedValue > UINT32_MAX) {
+						if (parsedValue == 0 || parsedValue > static_cast<unsigned long>(UINT32_MAX)) {
 							logger::warn("Line {}, Col {}: Count '{}' is out of range.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 							return false;
 						}

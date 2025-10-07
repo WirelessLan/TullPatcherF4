@@ -32,18 +32,21 @@ namespace Utils {
 		return s.eof() || (s >> remaining && std::isspace(remaining));
 	}
 
-	std::uint32_t ParseHex(std::string_view a_hexStr) {
-		std::uint32_t retID = 0;
+	std::optional<std::uint32_t> ParseHex(std::string_view a_hexStr) {
 		try {
-			retID = std::stoul(std::string(a_hexStr), nullptr, 16);
+			return std::stoul(std::string(a_hexStr), nullptr, 16);
 		}
-		catch (...) {}
-		return retID;
+		catch (...) {
+			return std::nullopt;
+		}
 	}
 
-	std::uint32_t ParseFormID(std::string_view a_formIdStr) {
-		std::uint32_t retID = ParseHex(a_formIdStr) & 0xFFFFFF;
-		return retID;
+	std::optional<std::uint32_t> ParseFormID(std::string_view a_formIdStr) {
+		auto formId = ParseHex(a_formIdStr);
+		if (!formId.has_value()) {
+			return std::nullopt;
+		}
+		return formId.value() & 0xFFFFFFu;
 	}
 
 	bool IsPluginExists(std::string_view a_pluginName) {
@@ -70,8 +73,11 @@ namespace Utils {
 	}
 
 	RE::TESForm* GetFormFromIdentifier(std::string_view pluginName, std::string_view formIdStr) {
-		std::uint32_t formID = ParseFormID(formIdStr);
-		return GetFormFromIdentifier(pluginName, formID);
+		auto formId = ParseFormID(formIdStr);
+		if (!formId.has_value()) {
+			return nullptr;
+		}
+		return GetFormFromIdentifier(pluginName, formId.value());
 	}
 
 	RE::TESForm* GetFormFromString(std::string_view a_formStr) {

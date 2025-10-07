@@ -343,7 +343,7 @@ namespace CObjs {
 					return false;
 				}
 
-				if (parsedValue > UINT16_MAX) {
+				if (parsedValue > static_cast<unsigned long>(UINT16_MAX)) {
 					logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 					return false;
 				}
@@ -471,7 +471,7 @@ namespace CObjs {
 		const auto keywords = RE::BGSKeyword::GetTypedKeywords();
 		if (keywords) {
 			const auto& arr = (*keywords)[RE::stl::to_underlying(type)];
-			for (uint16_t keywordIndex = 0; keywordIndex < arr.size(); keywordIndex++) {
+			for (std::uint16_t keywordIndex = 0; keywordIndex < arr.size(); keywordIndex++) {
 				g_keywordIndexMap[arr[keywordIndex]] = keywordIndex;
 			}
 		}
@@ -819,23 +819,23 @@ namespace CObjs {
 				continue;
 			}
 
-			if (!g_filterByFormIDPatchMap.empty()) {
-				auto filterByFormID_iter = g_filterByFormIDPatchMap.find(cobjForm);
-				if (filterByFormID_iter != g_filterByFormIDPatchMap.end()) {
-					Patch(cobjForm, filterByFormID_iter->second);
-				}
+			auto filterByFormID_iter = g_filterByFormIDPatchMap.find(cobjForm);
+			if (filterByFormID_iter != g_filterByFormIDPatchMap.end()) {
+				Patch(cobjForm, filterByFormID_iter->second);
 			}
 
-			if (!g_filterByCategoryKeywordPatchMap.empty()) {
-				if (cobjForm->filterKeywords.size && cobjForm->filterKeywords.array) {
-					for (std::uint32_t keywordIndex = 0; keywordIndex < cobjForm->filterKeywords.size; keywordIndex++) {
-						if (cobjForm->filterKeywords.array[keywordIndex].keywordIndex != UINT16_MAX) {
-							auto filterByCategoryKeyword_iter = g_filterByCategoryKeywordPatchMap.find(cobjForm->filterKeywords.array[keywordIndex].keywordIndex);
-							if (filterByCategoryKeyword_iter != g_filterByCategoryKeywordPatchMap.end()) {
-								Patch(cobjForm, filterByCategoryKeyword_iter->second);
-							}
-						}
-					}
+			if (!cobjForm->filterKeywords.array || cobjForm->filterKeywords.size == 0) {
+				continue;
+			}
+
+			for (std::uint32_t keywordIndex = 0; keywordIndex < cobjForm->filterKeywords.size; keywordIndex++) {
+				if (cobjForm->filterKeywords.array[keywordIndex].keywordIndex == UINT16_MAX) {
+					continue;
+				}
+
+				auto filterByCategoryKeyword_iter = g_filterByCategoryKeywordPatchMap.find(cobjForm->filterKeywords.array[keywordIndex].keywordIndex);
+				if (filterByCategoryKeyword_iter != g_filterByCategoryKeywordPatchMap.end()) {
+					Patch(cobjForm, filterByCategoryKeyword_iter->second);
 				}
 			}
 		}

@@ -337,7 +337,7 @@ namespace MusicTypes {
 					return false;
 				}
 
-				if (parsedValue > UINT8_MAX) {
+				if (parsedValue > static_cast<unsigned long>(UINT8_MAX)) {
 					logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 					return false;
 				}

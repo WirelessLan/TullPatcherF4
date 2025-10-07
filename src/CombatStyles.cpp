@@ -616,7 +616,7 @@ namespace CombatStyles
 					return false;
 				}
 
-				if (parsedValue > UINT32_MAX) {
+				if (parsedValue > static_cast<unsigned long>(UINT32_MAX)) {
 					logger::warn("Line {}, Col {}: Value '{}' out of range.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 					return false;
 				}

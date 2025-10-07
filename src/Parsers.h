@@ -472,15 +472,14 @@ namespace Parsers {
 				return false;
 			}
 
-			std::size_t start_idx = (a_token.length() >= 2 && (a_token[0] == '0' && (a_token[1] == 'x' || a_token[1] == 'X'))) ? 2 : 0;
-
-			if (start_idx == 2 && a_token.size() == 2) {
-				return false;
+			if (a_token.starts_with("0x") || a_token.starts_with("0X")) {
+				a_token.remove_prefix(2);
+				if (a_token.empty()) {
+					return false;
+				}
 			}
 
-			return std::all_of(a_token.begin() + start_idx, a_token.end(), [](unsigned char c) {
-				return std::isxdigit(c);
-			});
+			return std::all_of(a_token.begin(), a_token.end(), [](unsigned char c) { return std::isxdigit(c); });
 		}
 
 		std::optional<std::string> ParseForm() {
