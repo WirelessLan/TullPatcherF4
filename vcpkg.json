@@ -1,6 +1,6 @@
 {
   "name": "tullpatcherf4",
-  "version-string": "0.10.2",
+  "version-string": "0.11.0",
   "license": "MIT",
   "dependencies": [
     "boost-stl-interfaces",
