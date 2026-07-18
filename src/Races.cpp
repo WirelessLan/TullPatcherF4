@@ -144,34 +144,12 @@ namespace Races {
 				if (!ParseAssignment(configData)) {
 					return std::nullopt;
 				}
-
-				token = reader.GetToken();
-				if (token != ";") {
-					logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
-					return std::nullopt;
-				}
 			}
 			else {
-				token = reader.GetToken();
-				if (token != ".") {
-					logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
-					return std::nullopt;
-				}
-
-				if (!ParseOperation(configData)) {
-					return std::nullopt;
-				}
-
-				while (true) {
-					token = reader.Peek();
-					if (token == ";") {
-						reader.GetToken();
-						break;
-					}
-
+				do {
 					token = reader.GetToken();
 					if (token != ".") {
-						logger::warn("Line {}, Col {}: Syntax error. Expected '.' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+						logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
 						return std::nullopt;
 					}
 
@@ -179,13 +157,20 @@ namespace Races {
 						return std::nullopt;
 					}
 				}
+				while (reader.Peek() == ".");
+			}
+
+			token = reader.GetToken();
+			if (token != ";") {
+				logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+				return std::nullopt;
 			}
 
 			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
 		}
 
 		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
-			std::string indent = std::string(a_indent * 4, ' ');
+			auto indent = std::string(a_indent * 4, ' ');
 
 			switch (a_configData.Element) {
 			case ElementType::kBodyPartData:
@@ -282,12 +267,12 @@ namespace Races {
 				return false;
 			}
 
-			auto filterForm = ParseForm();
-			if (!filterForm.has_value()) {
+			const auto filterFormOpt = ParseForm();
+			if (!filterFormOpt.has_value()) {
 				return false;
 			}
 
-			a_config.FilterForm = filterForm.value();
+			a_config.FilterForm = filterFormOpt.value();
 
 			token = reader.GetToken();
 			if (token != ")") {
@@ -347,52 +332,42 @@ namespace Races {
 					return false;
 				}
 
-				std::string value = std::string(token.substr(1, token.length() - 2));
-				a_config.AssignValue = std::any(value);
+				a_config.AssignValue = std::any(std::string(token.substr(1, token.length() - 2)));
 			}
 			else if (a_config.Element == ElementType::kBodyPartData) {
-				auto bodyPartDataForm = ParseForm();
-				if (!bodyPartDataForm.has_value()) {
+				const auto formOpt = ParseForm();
+				if (!formOpt.has_value()) {
 					return false;
 				}
 
-				a_config.AssignValue = std::any(bodyPartDataForm.value());
+				a_config.AssignValue = std::any(formOpt.value());
 			}
 			else if (a_config.Element == ElementType::kBipedObjectSlots) {
-				std::uint32_t bipedObjectSlotsValue = 0;
+				std::uint32_t bipedSlots = 0;
 				
-				auto bipedSlot = ParseBipedSlot();
-				if (!bipedSlot.has_value()) {
+				auto bipedSlotOpt = ParseBipedSlot();
+				if (!bipedSlotOpt.has_value()) {
 					return false;
 				}
 
-				if (bipedSlot.value() != 0) {
-					bipedObjectSlotsValue |= 1u << (bipedSlot.value() - 30);
+				if (bipedSlotOpt.value() != 0) {
+					bipedSlots |= 1u << (bipedSlotOpt.value() - 30);
 				}
 
-				while (true) {
-					token = reader.Peek();
-					if (token == ";") {
-						break;
-					}
+				while (reader.Peek() == "|") {
+					reader.GetToken();
 
-					token = reader.GetToken();
-					if (token != "|") {
-						logger::warn("Line {}, Col {}: Syntax error. Expected '|' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					bipedSlotOpt = ParseBipedSlot();
+					if (!bipedSlotOpt.has_value()) {
 						return false;
 					}
 
-					bipedSlot = ParseBipedSlot();
-					if (!bipedSlot.has_value()) {
-						return false;
-					}
-
-					if (bipedSlot.value() != 0) {
-						bipedObjectSlotsValue |= 1u << (bipedSlot.value() - 30);
+					if (bipedSlotOpt.value() != 0) {
+						bipedSlots |= 1u << (bipedSlotOpt.value() - 30);
 					}
 				}
 
-				a_config.AssignValue = std::any(bipedObjectSlotsValue);
+				a_config.AssignValue = std::any(bipedSlots);
 			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
@@ -426,7 +401,7 @@ namespace Races {
 				return false;
 			}
 
-			bool isValidOperation = [](ElementType elem, OperationType op) {
+			auto isValidOperation = [](ElementType elem, OperationType op) -> bool {
 				switch (elem) {
 				case ElementType::kProperties:
 					return op == OperationType::kClear || op == OperationType::kSet || op == OperationType::kDelete;
@@ -454,12 +429,11 @@ namespace Races {
 				if (newOp.OpType != OperationType::kClear) {
 					ConfigData::Operation::PropertyData newPropData{};
 
-					std::optional<std::string> opForm = ParseForm();
-					if (!opForm.has_value()) {
+					const auto formOpt = ParseForm();
+					if (!formOpt.has_value()) {
 						return false;
 					}
-
-					newPropData.ActorValueForm = opForm.value();
+					newPropData.ActorValueForm = formOpt.value();
 
 					if (newOp.OpType == OperationType::kSet) {
 						token = reader.GetToken();
@@ -468,12 +442,11 @@ namespace Races {
 							return false;
 						}
 
-						std::optional<float> opValue = ParseNumber();
-						if (!opValue.has_value()) {
+						const auto valueOpt = ParseNumber<float>();
+						if (!valueOpt.has_value()) {
 							return false;
 						}
-
-						newPropData.Value = opValue.value();
+						newPropData.Value = valueOpt.value();
 					}
 
 					newOp.OpData = std::any(newPropData);
@@ -485,12 +458,11 @@ namespace Races {
 			case ElementType::kMalePresets:
 			case ElementType::kFemalePresets:
 				if (newOp.OpType != OperationType::kClear) {
-					std::optional<std::string> opForm = ParseForm();
-					if (!opForm.has_value()) {
+					const auto formOpt = ParseForm();
+					if (!formOpt.has_value()) {
 						return false;
 					}
-
-					newOp.OpData = std::any(opForm.value());
+					newOp.OpData = std::any(formOpt.value());
 				}
 
 				break;
@@ -502,7 +474,7 @@ namespace Races {
 				return false;
 			}
 
-			a_config.Operations.push_back(newOp);
+			a_config.Operations.emplace_back(newOp);
 
 			return true;
 		}
@@ -514,13 +486,13 @@ namespace Races {
 
 	void Prepare(const ConfigData& a_configData) {
 		if (a_configData.Filter == FilterType::kFormID) {
-			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+			auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
 			if (!filterForm) {
 				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
 				return;
 			}
 
-			RE::TESRace* race = filterForm->As<RE::TESRace>();
+			auto* race = filterForm->As<RE::TESRace>();
 			if (!race) {
 				logger::warn("'{}' is not a Race.", a_configData.FilterForm);
 				return;
@@ -533,15 +505,15 @@ namespace Races {
 				g_patchMap[race].FemaleSkeletalModel = std::any_cast<std::string>(a_configData.AssignValue.value());
 			}
 			else if (a_configData.Element == ElementType::kBodyPartData) {
-				std::string bodyPartDataFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+				const auto bodyPartDataFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
 
-				RE::TESForm* bodyPartDataForm = Utils::GetFormFromString(bodyPartDataFormStr);
+				auto* bodyPartDataForm = Utils::GetFormFromString(bodyPartDataFormStr);
 				if (!bodyPartDataForm) {
 					logger::warn("Invalid Form: '{}'.", bodyPartDataFormStr);
 					return;
 				}
 
-				RE::BGSBodyPartData* bodyPartData = bodyPartDataForm->As<RE::BGSBodyPartData>();
+				auto* bodyPartData = bodyPartDataForm->As<RE::BGSBodyPartData>();
 				if (!bodyPartData) {
 					logger::warn("'{}' is not a BodyPartData.", bodyPartDataFormStr);
 					return;
@@ -553,7 +525,7 @@ namespace Races {
 				g_patchMap[race].BipedObjectSlots = std::any_cast<std::uint32_t>(a_configData.AssignValue.value());
 			}
 			else if (a_configData.Element == ElementType::kProperties) {
-				PatchData& patchData = g_patchMap[race];
+				auto& patchData = g_patchMap[race];
 
 				if (!patchData.Properties.has_value()) {
 					patchData.Properties = PatchData::PropertiesData{};
@@ -564,14 +536,15 @@ namespace Races {
 						patchData.Properties->Clear = true;
 					}
 					else if (op.OpType == OperationType::kSet || op.OpType == OperationType::kDelete) {
-						ConfigData::Operation::PropertyData propData = std::any_cast<ConfigData::Operation::PropertyData>(op.OpData.value());
-						RE::TESForm* opForm = Utils::GetFormFromString(propData.ActorValueForm);
+						const auto propData = std::any_cast<ConfigData::Operation::PropertyData>(op.OpData.value());
+
+						auto* opForm = Utils::GetFormFromString(propData.ActorValueForm);
 						if (!opForm) {
 							logger::warn("Invalid Form: '{}'.", propData.ActorValueForm);
 							continue;
 						}
 
-						RE::ActorValueInfo* avInfo = opForm->As<RE::ActorValueInfo>();
+						auto* avInfo = opForm->As<RE::ActorValueInfo>();
 						if (!avInfo) {
 							logger::warn("'{}' is not a ActorValue.", propData.ActorValueForm);
 							continue;
@@ -587,7 +560,7 @@ namespace Races {
 				}
 			}
 			else if (a_configData.Element == ElementType::kMalePresets) {
-				PatchData& patchData = g_patchMap[race];
+				auto& patchData = g_patchMap[race];
 
 				if (!patchData.MalePresets.has_value()) {
 					patchData.MalePresets = PatchData::PresetsData{};
@@ -598,15 +571,15 @@ namespace Races {
 						patchData.MalePresets->Clear = true;
 					}
 					else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kAddIfNotExists || op.OpType == OperationType::kDelete) {
-						std::string opFormStr = std::any_cast<std::string>(op.OpData.value());
+						const auto opFormStr = std::any_cast<std::string>(op.OpData.value());
 
-						RE::TESForm* opForm = Utils::GetFormFromString(opFormStr);
+						auto* opForm = Utils::GetFormFromString(opFormStr);
 						if (!opForm) {
 							logger::warn("Invalid Form: '{}'.", opFormStr);
 							continue;
 						}
 
-						RE::TESNPC* presetNPC = opForm->As<RE::TESNPC>();
+						auto* presetNPC = opForm->As<RE::TESNPC>();
 						if (!presetNPC) {
 							logger::warn("'{}' is not a NPC.", opFormStr);
 							continue;
@@ -625,7 +598,7 @@ namespace Races {
 				}
 			}
 			else if (a_configData.Element == ElementType::kFemalePresets) {
-				PatchData& patchData = g_patchMap[race];
+				auto& patchData = g_patchMap[race];
 
 				if (!patchData.FemalePresets.has_value()) {
 					patchData.FemalePresets = PatchData::PresetsData{};
@@ -636,15 +609,15 @@ namespace Races {
 						patchData.FemalePresets->Clear = true;
 					}
 					else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kAddIfNotExists || op.OpType == OperationType::kDelete) {
-						std::string opFormStr = std::any_cast<std::string>(op.OpData.value());
+						const auto opFormStr = std::any_cast<std::string>(op.OpData.value());
 
-						RE::TESForm* opForm = Utils::GetFormFromString(opFormStr);
+						auto* opForm = Utils::GetFormFromString(opFormStr);
 						if (!opForm) {
 							logger::warn("Invalid Form: '{}'.", opFormStr);
 							continue;
 						}
 
-						RE::TESNPC* presetNPC = opForm->As<RE::TESNPC>();
+						auto* presetNPC = opForm->As<RE::TESNPC>();
 						if (!presetNPC) {
 							logger::warn("'{}' is not a NPC.", opFormStr);
 							continue;
@@ -669,14 +642,13 @@ namespace Races {
 		if (!a_race->properties) {
 			using alloc_type = std::remove_pointer_t<decltype(a_race->properties)>;
 
-			RE::MemoryManager& mm = RE::MemoryManager::GetSingleton();
-			void* stoage = mm.Allocate(sizeof(alloc_type), 0, false);
-			if (!stoage) {
+			auto* storage = RE::malloc(sizeof(alloc_type));
+			if (!storage) {
 				logger::critical("Failed to allocate the Race Properties array.");
 				return;
 			}
 
-			a_race->properties = new (stoage) alloc_type();
+			a_race->properties = new (storage) alloc_type();
 		}
 
 		// Clear
@@ -716,27 +688,25 @@ namespace Races {
 		if (!a_race->faceRelatedData[a_sex]) {
 			using alloc_type = std::remove_pointer_t<std::remove_extent_t<decltype(a_race->faceRelatedData)>>;
 
-			RE::MemoryManager& mm = RE::MemoryManager::GetSingleton();
-			void* stoage = mm.Allocate(sizeof(alloc_type), 0, false);
-			if (!stoage) {
+			auto* storage = RE::malloc(sizeof(alloc_type));
+			if (!storage) {
 				logger::critical("Failed to allocate the Race FaceRelatedData.");
 				return;
 			}
 
-			a_race->faceRelatedData[a_sex] = ::new (stoage) alloc_type();
+			a_race->faceRelatedData[a_sex] = ::new (storage) alloc_type();
 		}
 
 		if (!a_race->faceRelatedData[a_sex]->presetNPCs) {
 			using alloc_type = std::remove_pointer_t<decltype(a_race->faceRelatedData[a_sex]->presetNPCs)>;
 
-			RE::MemoryManager& mm = RE::MemoryManager::GetSingleton();
-			void* stoage = mm.Allocate(sizeof(alloc_type), 0, false);
-			if (!stoage) {
+			auto* storage = RE::malloc(sizeof(alloc_type));
+			if (!storage) {
 				logger::critical("Failed to allocate the Race PresetNPCs array.");
 				return;
 			}
 
-			a_race->faceRelatedData[a_sex]->presetNPCs = new (stoage) alloc_type();
+			a_race->faceRelatedData[a_sex]->presetNPCs = new (storage) alloc_type();
 		}
 
 		// Clear

@@ -111,26 +111,10 @@ namespace Ingestibles {
 				return std::nullopt;
 			}
 
-			token = reader.GetToken();
-			if (token != ".") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-
-			if (!ParseOperation(configData)) {
-				return std::nullopt;
-			}
-
-			while (true) {
-				token = reader.Peek();
-				if (token == ";") {
-					reader.GetToken();
-					break;
-				}
-
+			do {
 				token = reader.GetToken();
 				if (token != ".") {
-					logger::warn("Line {}, Col {}: Syntax error. Expected '.' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
 					return std::nullopt;
 				}
 
@@ -138,12 +122,19 @@ namespace Ingestibles {
 					return std::nullopt;
 				}
 			}
+			while (reader.Peek() == ".");
+
+			token = reader.GetToken();
+			if (token != ";") {
+				logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+				return std::nullopt;
+			}
 
 			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
 		}
 
 		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
-			std::string indent = std::string(a_indent * 4, ' ');
+			auto indent = std::string(a_indent * 4, ' ');
 
 			switch (a_configData.Element) {
 			case ElementType::kEffects:
@@ -192,12 +183,12 @@ namespace Ingestibles {
 				return false;
 			}
 
-			auto filterForm = ParseForm();
-			if (!filterForm.has_value()) {
+			const auto filterFormOpt = ParseForm();
+			if (!filterFormOpt.has_value()) {
 				return false;
 			}
 
-			a_configData.FilterForm = filterForm.value();
+			a_configData.FilterForm = filterFormOpt.value();
 
 			token = reader.GetToken();
 			if (token != ")") {
@@ -239,7 +230,7 @@ namespace Ingestibles {
 				return false;
 			}
 
-			bool isValidOperation = [](ElementType elem, OperationType op) {
+			auto isValidOperation = [](ElementType elem, OperationType op) -> bool {
 				if (elem == ElementType::kEffects) {
 					return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete;
 				}
@@ -261,12 +252,11 @@ namespace Ingestibles {
 				if (newOp.OpType != OperationType::kClear) {
 					ConfigData::Operation::EffectData effectData{};
 
-					std::optional<std::string> opForm = ParseForm();
-					if (!opForm.has_value()) {
+					const auto opFormOpt = ParseForm();
+					if (!opFormOpt.has_value()) {
 						return false;
 					}
-
-					effectData.EffectForm = opForm.value();
+					effectData.EffectForm = opFormOpt.value();
 
 					token = reader.GetToken();
 					if (token != ",") {
@@ -274,12 +264,11 @@ namespace Ingestibles {
 						return false;
 					}
 
-					auto parsedNumber = ParseNumber();
-					if (!parsedNumber.has_value()) {
+					const auto magnitudeOpt = ParseNumber<float>();
+					if (!magnitudeOpt.has_value()) {
 						return false;
 					}
-
-					effectData.Magnitude = parsedNumber.value();
+					effectData.Magnitude = magnitudeOpt.value();
 
 					token = reader.GetToken();
 					if (token != ",") {
@@ -287,20 +276,11 @@ namespace Ingestibles {
 						return false;
 					}
 
-					token = reader.GetToken();
-					if (token.empty()) {
-						logger::warn("Line {}, Col {}: Expected area.", reader.GetLastLine(), reader.GetLastLineIndex());
+					const auto areaOpt = ParseNumber<std::uint32_t>();
+					if (!areaOpt.has_value()) {
 						return false;
 					}
-
-					unsigned long parsedValue;
-					auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-					if (parseResult.ec != std::errc()) {
-						logger::warn("Line {}, Col {}: Failed to parse area '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-						return false;
-					}
-
-					effectData.Area = static_cast<std::uint32_t>(parsedValue);
+					effectData.Area = areaOpt.value();
 
 					token = reader.GetToken();
 					if (token != ",") {
@@ -308,19 +288,11 @@ namespace Ingestibles {
 						return false;
 					}
 
-					token = reader.GetToken();
-					if (token.empty()) {
-						logger::warn("Line {}, Col {}: Expected duration.", reader.GetLastLine(), reader.GetLastLineIndex());
+					const auto durationOpt = ParseNumber<std::uint32_t>();
+					if (!durationOpt.has_value()) {
 						return false;
 					}
-
-					parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-					if (parseResult.ec != std::errc()) {
-						logger::warn("Line {}, Col {}: Failed to parse duration '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-						return false;
-					}
-
-					effectData.Duration = static_cast<std::uint32_t>(parsedValue);
+					effectData.Duration = durationOpt.value();
 
 					newOp.OpEffectData = effectData;
 				}
@@ -332,7 +304,7 @@ namespace Ingestibles {
 				return false;
 			}
 
-			a_configData.Operations.push_back(newOp);
+			a_configData.Operations.emplace_back(newOp);
 
 			return true;
 		}
@@ -344,19 +316,19 @@ namespace Ingestibles {
 
 	void Prepare(const ConfigData& a_configData) {
 		if (a_configData.Filter == FilterType::kFormID) {
-			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+			auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
 			if (!filterForm) {
 				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
 				return;
 			}
 
-			RE::AlchemyItem* ingestibleForm = filterForm->As<RE::AlchemyItem>();
+			auto* ingestibleForm = filterForm->As<RE::AlchemyItem>();
 			if (!ingestibleForm) {
 				logger::warn("'{}' is not a Ingestible.", a_configData.FilterForm);
 				return;
 			}
 
-			PatchData& patchData = g_patchMap[ingestibleForm];
+			auto& patchData = g_patchMap[ingestibleForm];
 
 			if (a_configData.Element == ElementType::kEffects) {
 				if (!patchData.Effects.has_value()) {
@@ -368,13 +340,13 @@ namespace Ingestibles {
 						patchData.Effects->Clear = true;
 					}
 					else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kDelete) {
-						RE::TESForm* opForm = Utils::GetFormFromString(op.OpEffectData->EffectForm);
+						auto* opForm = Utils::GetFormFromString(op.OpEffectData->EffectForm);
 						if (!opForm) {
 							logger::warn("Invalid Form: '{}'.", op.OpEffectData->EffectForm);
 							continue;
 						}
 
-						RE::EffectSetting* effectSetting = opForm->As<RE::EffectSetting>();
+						auto* effectSetting = opForm->As<RE::EffectSetting>();
 						if (!effectSetting) {
 							logger::warn("'{}' is not a Magic Effect.", op.OpEffectData->EffectForm);
 							continue;
@@ -393,17 +365,17 @@ namespace Ingestibles {
 	}
 
 	std::vector<RE::EffectItem*> GetEffects(RE::AlchemyItem* a_alchemyItem) {
-		std::vector<RE::EffectItem*> retVec;
+		std::vector<RE::EffectItem*> effects;
 
 		if (!a_alchemyItem || a_alchemyItem->listOfEffects.empty()) {
-			return retVec;
+			return effects;
 		}
 
 		for (auto efItem : a_alchemyItem->listOfEffects) {
-			retVec.push_back(efItem);
+			effects.emplace_back(efItem);
 		}
 
-		return retVec;
+		return effects;
 	}
 
 	void SetEffects(RE::AlchemyItem* a_alchemyItem, const std::vector<RE::EffectItem*>& a_effects) {
@@ -418,19 +390,18 @@ namespace Ingestibles {
 		}
 
 		for (auto effItem : a_effects) {
-			a_alchemyItem->listOfEffects.push_back(effItem);
+			a_alchemyItem->listOfEffects.emplace_back(effItem);
 		}
 	}
 
 	RE::EffectItem* AllocEffect(const PatchData::EffectsData::Effect& a_effect) {
-		RE::MemoryManager& mm = RE::MemoryManager::GetSingleton();
-		void* newData = mm.Allocate(sizeof(RE::EffectItem), 0, false);
+		auto* newData = RE::malloc(sizeof(RE::EffectItem));
 		if (!newData) {
 			logger::critical("Failed to allocate the Ingestible EffectItem.");
 			return nullptr;
 		}
 
-		RE::EffectItem* retVal = static_cast<RE::EffectItem*>(newData);
+		auto* retVal = static_cast<RE::EffectItem*>(newData);
 		retVal->effectSetting = a_effect.BaseEffect;
 		retVal->data.magnitude = a_effect.Magnitude;
 		retVal->data.area = a_effect.Area;
@@ -446,7 +417,7 @@ namespace Ingestibles {
 			return;
 		}
 
-		RE::MemoryManager::GetSingleton().Deallocate(a_item, false);
+		RE::free(a_item);
 	}
 
 	void PatchEffects(RE::AlchemyItem* a_alchemyItem, const PatchData::EffectsData& a_effectsData) {
@@ -467,10 +438,10 @@ namespace Ingestibles {
 		if (!isCleared) {
 			for (const auto& delEffect : a_effectsData.DeleteEffectVec) {
 				for (auto it = effectsVec.begin(); it != effectsVec.end(); it++) {
-					RE::EffectItem* effItem = *it;
-					if (delEffect.BaseEffect == effItem->effectSetting && delEffect.Magnitude == effItem->data.magnitude && delEffect.Area == static_cast<std::uint32_t>(effItem->data.area) && delEffect.Duration == static_cast<std::uint32_t>(effItem->data.duration)) {
+					auto* effectItem = *it;
+					if (delEffect.BaseEffect == effectItem->effectSetting && delEffect.Magnitude == effectItem->data.magnitude && delEffect.Area == static_cast<std::uint32_t>(effectItem->data.area) && delEffect.Duration == static_cast<std::uint32_t>(effectItem->data.duration)) {
 						effectsVec.erase(it);
-						FreeEffect(effItem);
+						FreeEffect(effectItem);
 						isDeleted = true;
 						break;
 					}
@@ -480,9 +451,9 @@ namespace Ingestibles {
 
 		// Add
 		for (const auto& addEffect : a_effectsData.AddEffectVec) {
-			RE::EffectItem* newEffItem = AllocEffect(addEffect);
-			if (newEffItem) {
-				effectsVec.push_back(newEffItem);
+			auto* newEffectItem = AllocEffect(addEffect);
+			if (newEffectItem) {
+				effectsVec.push_back(newEffectItem);
 				isAdded = true;
 			}
 		}

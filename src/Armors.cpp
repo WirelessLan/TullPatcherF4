@@ -147,17 +147,8 @@ namespace Armors {
 					return std::nullopt;
 				}
 
-				while (true) {
-					token = reader.Peek();
-					if (token == ";") {
-						break;
-					}
-
-					token = reader.GetToken();
-					if (token != ".") {
-						logger::warn("Line {}, Col {}: Syntax error. Expected '.' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
-						return std::nullopt;
-					}
+				while (reader.Peek() == ".") {
+					reader.GetToken();
 
 					if (!ParseOperation(configData)) {
 						return std::nullopt;
@@ -175,7 +166,7 @@ namespace Armors {
 		}
 
 		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
-			std::string indent = std::string(a_indent * 4, ' ');
+			auto indent = std::string(a_indent * 4, ' ');
 
 			switch (a_configData.Element) {
 			case ElementType::kArmorRating:
@@ -271,12 +262,12 @@ namespace Armors {
 				return false;
 			}
 
-			auto filterForm = ParseForm();
-			if (!filterForm.has_value()) {
+			const auto filterFormOpt = ParseForm();
+			if (!filterFormOpt.has_value()) {
 				return false;
 			}
 
-			a_config.FilterForm = filterForm.value();
+			a_config.FilterForm = filterFormOpt.value();
 
 			token = reader.GetToken();
 			if (token != ")") {
@@ -323,56 +314,39 @@ namespace Armors {
 			}
 
 			if (a_config.Element == ElementType::kArmorRating) {
-				token = reader.GetToken();
-				if (token.empty()) {
-					logger::warn("Line {}, Col {}: Expected value.", reader.GetLastLine(), reader.GetLastLineIndex());
+				const auto valueOpt = ParseNumber<std::uint16_t>();
+				if (!valueOpt.has_value()) {
 					return false;
 				}
 
-				unsigned long parsedValue;
-				auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-				if (parseResult.ec != std::errc()) {
-					logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-					return false;
-				}
-
-				a_config.AssignValue = std::any(static_cast<std::uint16_t>(parsedValue));
+				a_config.AssignValue = std::any(valueOpt.value());
 			}
 			else if (a_config.Element == ElementType::kBipedObjectSlots) {
-				std::uint32_t bipedObjectSlotsValue = 0;
+				std::uint32_t bipedSlots = 0;
 
-				auto bipedSlot = ParseBipedSlot();
-				if (!bipedSlot.has_value()) {
+				auto bipedSlotOpt = ParseBipedSlot();
+				if (!bipedSlotOpt.has_value()) {
 					return false;
 				}
 
-				if (bipedSlot.value() != 0) {
-					bipedObjectSlotsValue |= 1u << (bipedSlot.value() - 30);
+				if (bipedSlotOpt.value() != 0) {
+					bipedSlots |= 1u << (bipedSlotOpt.value() - 30);
 				}
 
-				while (true) {
-					token = reader.Peek();
-					if (token == ";") {
-						break;
-					}
+				while (reader.Peek() == "|") {
+					reader.GetToken();
 
-					token = reader.GetToken();
-					if (token != "|") {
-						logger::warn("Line {}, Col {}: Syntax error. Expected '|' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					bipedSlotOpt = ParseBipedSlot();
+					if (!bipedSlotOpt.has_value()) {
 						return false;
 					}
 
-					bipedSlot = ParseBipedSlot();
-					if (!bipedSlot.has_value()) {
-						return false;
-					}
-
-					if (bipedSlot.value() != 0) {
-						bipedObjectSlotsValue |= 1u << (bipedSlot.value() - 30);
+					if (bipedSlotOpt.value() != 0) {					
+						bipedSlots |= 1u << (bipedSlotOpt.value() - 30);
 					}
 				}
 
-				a_config.AssignValue = std::any(bipedObjectSlotsValue);
+				a_config.AssignValue = std::any(bipedSlots);
 			}
 			else if (a_config.Element == ElementType::kFullName) {
 				token = reader.GetToken();
@@ -385,20 +359,22 @@ namespace Armors {
 					return false;
 				}
 
-				std::string value = std::string(token.substr(1, token.length() - 2));
+				const auto value = std::string(token.substr(1, token.length() - 2));
 				a_config.AssignValue = std::any(value);
 			}
 			else if (a_config.Element == ElementType::kObjectEffect) {
 				token = reader.Peek();
 				if (token == "null") {
 					a_config.AssignValue = std::any(std::string(reader.GetToken()));
-				} else {
-					auto effectForm = ParseForm();
-					if (!effectForm.has_value()) {
-						return false;
-					}
-					a_config.AssignValue = std::any(std::string(effectForm.value()));
+					return true;
 				}
+
+				const auto effectFormOpt = ParseForm();
+				if (!effectFormOpt.has_value()) {
+					return false;
+				}
+
+				a_config.AssignValue = std::any(std::string(effectFormOpt.value()));
 			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
@@ -426,7 +402,7 @@ namespace Armors {
 				return false;
 			}
 
-			bool isValidOperation = [](ElementType elem, OperationType op) {
+			auto isValidOperation = [](ElementType elem, OperationType op) -> bool {
 				if (elem == ElementType::kKeywords) {
 					return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete;
 				}
@@ -450,12 +426,12 @@ namespace Armors {
 			switch (a_configData.Element) {
 			case ElementType::kKeywords:
 				if (newOp.OpType != OperationType::kClear) {
-					auto form = ParseForm();
-					if (!form.has_value()) {
+					const auto formOpt = ParseForm();
+					if (!formOpt.has_value()) {
 						return false;
 					}
-
-					newOp.OpData = std::any(form.value());
+					
+					newOp.OpData = std::any(formOpt.value());
 				}
 				break;
 
@@ -463,12 +439,11 @@ namespace Armors {
 				if (newOp.OpType != OperationType::kClear) {
 					ConfigData::Operation::ResistanceData resistanceData{};
 
-					auto form = ParseForm();
-					if (!form.has_value()) {
+					const auto formOpt = ParseForm();
+					if (!formOpt.has_value()) {
 						return false;
 					}
-
-					resistanceData.Form = form.value();
+					resistanceData.Form = formOpt.value();
 
 					if (newOp.OpType == OperationType::kAdd) {
 						token = reader.GetToken();
@@ -477,20 +452,11 @@ namespace Armors {
 							return false;
 						}
 
-						token = reader.GetToken();
-						if (token.empty()) {
-							logger::warn("Line {}, Col {}: Expected value.", reader.GetLastLine(), reader.GetLastLineIndex());
+						const auto valueOpt = ParseNumber<std::uint32_t>();
+						if (!valueOpt.has_value()) {
 							return false;
 						}
-
-						unsigned long parsedValue;
-						auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-						if (parseResult.ec != std::errc()) {
-							logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-							return false;
-						}
-
-						resistanceData.Value = static_cast<std::uint32_t>(parsedValue);
+						resistanceData.Value = valueOpt.value();
 					}
 
 					newOp.OpData = std::any(resistanceData);
@@ -504,7 +470,7 @@ namespace Armors {
 				return false;
 			}
 
-			a_configData.Operations.push_back(newOp);
+			a_configData.Operations.emplace_back(newOp);
 
 			return true;
 		}
@@ -516,13 +482,13 @@ namespace Armors {
 
 	void Prepare(const ConfigData& a_configData) {
 		if (a_configData.Filter == FilterType::kFormID) {
-			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+			auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
 			if (!filterForm) {
 				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
 				return;
 			}
 
-			RE::TESObjectARMO* armo = filterForm->As<RE::TESObjectARMO>();
+			auto* armo = filterForm->As<RE::TESObjectARMO>();
 			if (!armo) {
 				logger::warn("'{}' is not a Armor.", a_configData.FilterForm);
 				return;
@@ -547,15 +513,15 @@ namespace Armors {
 						g_patchMap[armo].Keywords->Clear = true;
 					}
 					else if (operation.OpType == OperationType::kAdd || operation.OpType == OperationType::kDelete) {
-						std::string keywordFormStr = std::any_cast<std::string>(operation.OpData.value());
+						const auto keywordFormStr = std::any_cast<std::string>(operation.OpData.value());
 
-						RE::TESForm* keywordForm = Utils::GetFormFromString(keywordFormStr);
+						auto* keywordForm = Utils::GetFormFromString(keywordFormStr);
 						if (!keywordForm) {
 							logger::warn("Invalid Form: '{}'.", keywordFormStr);
 							return;
 						}
 
-						RE::BGSKeyword* keyword = keywordForm->As<RE::BGSKeyword>();
+						auto* keyword = keywordForm->As<RE::BGSKeyword>();
 						if (!keyword) {
 							logger::warn("'{}' is not a Keyword.", keywordFormStr);
 							return;
@@ -571,19 +537,19 @@ namespace Armors {
 				}
 			}
 			else if (a_configData.Element == ElementType::kObjectEffect) {
-				std::string effectFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+				const auto effectFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
 
 				if (effectFormStr == "null") {
 					g_patchMap[armo].ObjectEffect = nullptr;
 				}
 				else {
-					RE::TESForm* effectForm = Utils::GetFormFromString(effectFormStr);
+					auto* effectForm = Utils::GetFormFromString(effectFormStr);
 					if (!effectForm) {
 						logger::warn("Invalid Form: '{}'.", effectFormStr);
 						return;
 					}
 
-					RE::EnchantmentItem* objectEffect = effectForm->As<RE::EnchantmentItem>();
+					auto* objectEffect = effectForm->As<RE::EnchantmentItem>();
 					if (!objectEffect) {
 						logger::warn("'{}' is not an Object Effect.", effectFormStr);
 						return;
@@ -602,21 +568,23 @@ namespace Armors {
 						g_patchMap[armo].Resistances->Clear = true;
 					}
 					else if (operation.OpType == OperationType::kAdd || operation.OpType == OperationType::kDelete) {
-						ConfigData::Operation::ResistanceData resistanceData = std::any_cast<ConfigData::Operation::ResistanceData>(operation.OpData.value());
+						const auto resistanceData = std::any_cast<ConfigData::Operation::ResistanceData>(operation.OpData.value());
 
-						RE::TESForm* form = Utils::GetFormFromString(resistanceData.Form);
+						auto* form = Utils::GetFormFromString(resistanceData.Form);
 						if (!form) {
 							logger::warn("Invalid Form: '{}'.", resistanceData.Form);
 							continue;
 						}
 
-						RE::BGSDamageType* damageType = form->As<RE::BGSDamageType>();
+						auto* damageType = form->As<RE::BGSDamageType>();
 						if (!damageType) {
 							logger::warn("'{}' is not a Damage Type.", resistanceData.Form);
 							continue;
 						}
 
-						PatchData::ResistancesData::Resistance resistance{ damageType, resistanceData.Value };
+						PatchData::ResistancesData::Resistance resistance{};
+						resistance.DamageType = damageType;
+						resistance.Value = resistanceData.Value;
 
 						if (operation.OpType == OperationType::kAdd) {
 							g_patchMap[armo].Resistances->AddResistanceVec.push_back(resistance);
@@ -661,8 +629,7 @@ namespace Armors {
 		if (!a_armo->armorData.damageTypes) {
 			using alloc_type = std::remove_pointer_t<decltype(a_armo->armorData.damageTypes)>;
 
-			RE::MemoryManager& memoryManager = RE::MemoryManager::GetSingleton();
-			void* storage = memoryManager.Allocate(sizeof(alloc_type), 0, false);
+			auto* storage = RE::malloc(sizeof(alloc_type));
 			if (!storage) {
 				logger::critical("Failed to allocate the Armor Resistances array.");
 				return;

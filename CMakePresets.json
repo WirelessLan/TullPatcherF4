@@ -72,5 +72,12 @@
       "toolset": "v143"
     }
   ],
+  "buildPresets": [
+    {
+      "configurePreset": "vs2022-windows-vcpkg",
+      "configuration": "Release",
+      "name": "Release"
+    }
+  ],
   "version": 2
 }

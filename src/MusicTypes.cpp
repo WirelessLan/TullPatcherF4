@@ -116,34 +116,12 @@ namespace MusicTypes {
 				if (!ParseAssignment(configData)) {
 					return std::nullopt;
 				}
-
-				token = reader.GetToken();
-				if (token != ";") {
-					logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
-					return std::nullopt;
-				}
 			}
 			else {
-				token = reader.GetToken();
-				if (token != ".") {
-					logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
-					return std::nullopt;
-				}
-
-				if (!ParseOperation(configData)) {
-					return std::nullopt;
-				}
-
-				while (true) {
-					token = reader.Peek();
-					if (token == ";") {
-						reader.GetToken();
-						break;
-					}
-
+				do {
 					token = reader.GetToken();
 					if (token != ".") {
-						logger::warn("Line {}, Col {}: Syntax error. Expected '.' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+						logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
 						return std::nullopt;
 					}
 
@@ -151,13 +129,20 @@ namespace MusicTypes {
 						return std::nullopt;
 					}
 				}
+				while (reader.Peek() == ".");
 			}
 
+			token = reader.GetToken();
+			if (token != ";") {
+				logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+				return std::nullopt;
+			}
+			
 			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
 		}
 
 		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
-			std::string indent = std::string(a_indent * 4, ' ');
+			auto indent = std::string(a_indent * 4, ' ');
 
 			switch (a_configData.Element) {
 			case ElementType::kDucking:
@@ -222,12 +207,12 @@ namespace MusicTypes {
 				return false;
 			}
 
-			auto filterForm = ParseForm();
-			if (!filterForm.has_value()) {
+			const auto filterFormOpt = ParseForm();
+			if (!filterFormOpt.has_value()) {
 				return false;
 			}
 
-			a_configData.FilterForm = filterForm.value();
+			a_configData.FilterForm = filterFormOpt.value();
 
 			token = reader.GetToken();
 			if (token != ")") {
@@ -271,25 +256,25 @@ namespace MusicTypes {
 			}
 
 			if (a_configData.Element == ElementType::kDucking) {
-				auto parsedValue = ParseNumber();
-				if (!parsedValue.has_value()) {
+				const auto parsedValueOpt = ParseNumber<float>();
+				if (!parsedValueOpt.has_value()) {
 					return false;
 				}
 
-				if (*parsedValue < 0.0f || *parsedValue > 655.35f) {
-					logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), *parsedValue);
+				if (parsedValueOpt.value() < 0.0f || parsedValueOpt.value() > 655.35f) {
+					logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), parsedValueOpt.value());
 					return false;
 				}
 
-				a_configData.AssignValue = std::any(static_cast<std::uint16_t>(std::round(*parsedValue * 100.0f)));
+				a_configData.AssignValue = std::any(static_cast<std::uint16_t>(std::round(parsedValueOpt.value() * 100.0f)));
 			}
 			else if (a_configData.Element == ElementType::kFadeDuration) {
-				auto parsedValue = ParseNumber();
-				if (!parsedValue.has_value()) {
+				const auto parsedValueOpt = ParseNumber<float>();
+				if (!parsedValueOpt.has_value()) {
 					return false;
 				}
 
-				a_configData.AssignValue = std::any(*parsedValue);
+				a_configData.AssignValue = std::any(parsedValueOpt.value());
 			}
 			else if (a_configData.Element == ElementType::kFlags) {
 				std::uint32_t flagValue = 0;
@@ -298,51 +283,27 @@ namespace MusicTypes {
 				if (!flag.has_value()) {
 					return false;
 				}
-
 				flagValue |= flag.value();
 
-				while (true) {
-					token = reader.Peek();
-					if (token == ";") {
-						break;
-					}
-
+				while (reader.Peek() == "|") {
 					token = reader.GetToken();
-					if (token != "|") {
-						logger::warn("Line {}, Col {}: Syntax error. Expected '|' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
-						return false;
-					}
 
 					flag = ParseFlag();
 					if (!flag.has_value()) {
 						return false;
 					}
-
 					flagValue |= flag.value();
 				}
 
 				a_configData.AssignValue = std::any(flagValue);
 			}
 			else if (a_configData.Element == ElementType::kPriority) {
-				token = reader.GetToken();
-				if (token.empty()) {
-					logger::warn("Line {}, Col {}: Expected value.", reader.GetLastLine(), reader.GetLastLineIndex());
+				const auto priorityOpt = ParseNumber<std::uint8_t>();
+				if (!priorityOpt.has_value()) {
 					return false;
 				}
 
-				unsigned long parsedValue;
-				auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-				if (parseResult.ec != std::errc()) {
-					logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-					return false;
-				}
-
-				if (parsedValue > static_cast<unsigned long>(UINT8_MAX)) {
-					logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-					return false;
-				}
-
-				a_configData.AssignValue = std::any(static_cast<std::uint8_t>(parsedValue));
+				a_configData.AssignValue = std::any(priorityOpt.value());
 			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element));
@@ -370,7 +331,7 @@ namespace MusicTypes {
 				return false;
 			}
 
-			bool isValidOperation = [](ElementType elem, OperationType op) {
+			auto isValidOperation = [](ElementType elem, OperationType op) -> bool {
 				if (elem == ElementType::kMusicTracks) {
 					return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete;
 				}
@@ -391,12 +352,12 @@ namespace MusicTypes {
 			switch (a_configData.Element) {
 			case ElementType::kMusicTracks:
 				if (newOp.OpType != OperationType::kClear) {
-					std::optional<std::string> form = ParseForm();
-					if (!form.has_value()) {
+					const auto formOpt = ParseForm();
+					if (!formOpt.has_value()) {
 						return false;
 					}
 
-					newOp.OpForm = form.value();
+					newOp.OpForm = formOpt.value();
 				}
 
 				break;
@@ -408,7 +369,7 @@ namespace MusicTypes {
 				return false;
 			}
 
-			a_configData.Operations.push_back(newOp);
+			a_configData.Operations.emplace_back(newOp);
 
 			return true;
 		}
@@ -448,33 +409,34 @@ namespace MusicTypes {
 		}
 
 		std::string GetFlags(std::uint32_t a_flags) {
-			std::string retStr;
-			std::string separtor = " | ";
+			static constexpr std::string_view kSeparator = " | ";
+
+			std::string flags;
 
 			if (a_flags & 0x0001) {
-				retStr += "PlaysOneSelection" + separtor;
+				flags += "PlaysOneSelection | ";
 			}
 			if (a_flags & 0x0002) {
-				retStr += "AbruptTransition" + separtor;
+				flags += "AbruptTransition | ";
 			}
 			if (a_flags & 0x0004) {
-				retStr += "CycleTracks" + separtor;
+				flags += "CycleTracks | ";
 			}
 			if (a_flags & 0x0008) {
-				retStr += "MaintainTrackOrder" + separtor;
+				flags += "MaintainTrackOrder | ";
 			}
 			if (a_flags & 0x0020) {
-				retStr += "DucksCurrentTrack" + separtor;
+				flags += "DucksCurrentTrack | ";
 			}
 			if (a_flags & 0x0040) {
-				retStr += "DoesNotQueue" + separtor;
+				flags += "DoesNotQueue | ";
 			}
 
-			if (retStr.empty()) {
+			if (flags.empty()) {
 				return "None";
 			}
 
-			return retStr.substr(0, retStr.size() - separtor.size());
+			return flags.substr(0, flags.size() - kSeparator.size());
 		}
 	};
 
@@ -484,19 +446,19 @@ namespace MusicTypes {
 
 	void Prepare(const ConfigData& a_configData) {
 		if (a_configData.Filter == FilterType::kFormID) {
-			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+			auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
 			if (!filterForm) {
 				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
 				return;
 			}
 
-			RE::BGSMusicType* musicType = filterForm->As<RE::BGSMusicType>();
+			auto* musicType = filterForm->As<RE::BGSMusicType>();
 			if (!musicType) {
 				logger::warn("'{}' is not a MusicType.", a_configData.FilterForm);
 				return;
 			}
 
-			PatchData& patchData = g_patchMap[musicType];
+			auto& patchData = g_patchMap[musicType];
 
 			if (a_configData.Element == ElementType::kDucking) {
 				patchData.Ducking = std::any_cast<std::uint16_t>(a_configData.AssignValue.value());
@@ -517,13 +479,13 @@ namespace MusicTypes {
 						patchData.MusicTracks->Clear = true;
 					}
 					else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kDelete) {
-						RE::TESForm* opForm = Utils::GetFormFromString(op.OpForm.value());
+						auto* opForm = Utils::GetFormFromString(op.OpForm.value());
 						if (!opForm) {
 							logger::warn("Invalid Form: '{}'.", op.OpForm.value());
 							continue;
 						}
 
-						RE::BGSMusicTrackFormWrapper* musicTrack = opForm->As<RE::BGSMusicTrackFormWrapper>();
+						auto* musicTrack = opForm->As<RE::BGSMusicTrackFormWrapper>();
 						if (!musicTrack) {
 							logger::warn("'{}' is not a MusicTrack.", op.OpForm.value());
 							continue;
@@ -559,7 +521,7 @@ namespace MusicTypes {
 		if (!isCleared) {
 			for (const auto& delForm : a_musicTracksData.DeleteTrackVec) {
 				for (auto it = a_musicType->tracks.begin(); it != a_musicType->tracks.end(); it++) {
-					RE::BGSMusicTrackFormWrapper* musicTrack = RE::fallout_cast<RE::BGSMusicTrackFormWrapper*, RE::BSIMusicTrack>(*it);
+					auto* musicTrack = RE::fallout_cast<RE::BGSMusicTrackFormWrapper*, RE::BSIMusicTrack>(*it);
 					if (musicTrack && musicTrack == delForm) {
 						a_musicType->tracks.erase(it);
 						break;
@@ -570,7 +532,7 @@ namespace MusicTypes {
 
 		// Add
 		for (const auto& addForm : a_musicTracksData.AddTrackVec) {
-			RE::BSIMusicTrack* musicTrack = addForm->As<RE::BSIMusicTrack>();
+			auto* musicTrack = addForm->As<RE::BSIMusicTrack>();
 			if (musicTrack) {
 				a_musicType->tracks.push_back(musicTrack);
 			}

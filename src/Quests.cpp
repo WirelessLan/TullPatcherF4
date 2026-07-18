@@ -85,7 +85,7 @@ namespace Quests {
 		}
 
 		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
-			std::string indent = std::string(a_indent * 4, ' ');
+			auto indent = std::string(a_indent * 4, ' ');
 
 			switch (a_configData.Element) {
 			case ElementType::kFullName:
@@ -111,12 +111,12 @@ namespace Quests {
 				return false;
 			}
 
-			auto filterForm = ParseForm();
-			if (!filterForm.has_value()) {
+			const auto filterFormOpt = ParseForm();
+			if (!filterFormOpt.has_value()) {
 				return false;
 			}
 
-			a_config.FilterForm = filterForm.value();
+			a_config.FilterForm = filterFormOpt.value();
 
 			token = reader.GetToken();
 			if (token != ")") {
@@ -175,13 +175,13 @@ namespace Quests {
 
 	void Prepare(const ConfigData& a_configData) {
 		if (a_configData.Filter == FilterType::kFormID) {
-			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+			auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
 			if (!filterForm) {
 				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
 				return;
 			}
 
-			RE::TESQuest* quest = filterForm->As<RE::TESQuest>();
+			auto* quest = filterForm->As<RE::TESQuest>();
 			if (!quest) {
 				logger::warn("'{}' is not a Quest.", a_configData.FilterForm);
 				return;

@@ -182,34 +182,12 @@ namespace NPCs {
 				if (!ParseAssignment(configData)) {
 					return std::nullopt;
 				}
-
-				token = reader.GetToken();
-				if (token != ";") {
-					logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
-					return std::nullopt;
-				}
 			}
 			else {
-				token = reader.GetToken();
-				if (token != ".") {
-					logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
-					return std::nullopt;
-				}
-
-				if (!ParseOperation(configData)) {
-					return std::nullopt;
-				}
-
-				while (true) {
-					token = reader.Peek();
-					if (token == ";") {
-						reader.GetToken();
-						break;
-					}
-
+				do {
 					token = reader.GetToken();
 					if (token != ".") {
-						logger::warn("Line {}, Col {}: Syntax error. Expected '.' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+						logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
 						return std::nullopt;
 					}
 
@@ -217,13 +195,20 @@ namespace NPCs {
 						return std::nullopt;
 					}
 				}
+				while (reader.Peek() == ".");
+			}
+
+			token = reader.GetToken();
+			if (token != ";") {
+				logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+				return std::nullopt;
 			}
 
 			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
 		}
 
 		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
-			std::string indent = std::string(a_indent * 4, ' ');
+			auto indent = std::string(a_indent * 4, ' ');
 
 			switch (a_configData.Element) {
 			case ElementType::kHeadParts:
@@ -367,12 +352,12 @@ namespace NPCs {
 				return false;
 			}
 
-			auto filterForm = ParseForm();
-			if (!filterForm.has_value()) {
+			const auto filterFormOpt = ParseForm();
+			if (!filterFormOpt.has_value()) {
 				return false;
 			}
 
-			a_config.FilterForm = filterForm.value();
+			a_config.FilterForm = filterFormOpt.value();
 
 			token = reader.GetToken();
 			if (token != ")") {
@@ -459,14 +444,15 @@ namespace NPCs {
 				token = reader.Peek();
 				if (token == "null") {
 					a_config.AssignValue = std::any(std::string(reader.GetToken()));
+					return true;
 				}
-				else {
-					auto form = ParseForm();
-					if (!form.has_value()) {
-						return false;
-					}
-					a_config.AssignValue = std::any(form.value());
+
+				const auto formOpt = ParseForm();
+				if (!formOpt.has_value()) {
+					return false;
 				}
+
+				a_config.AssignValue = std::any(formOpt.value());
 			}
 			else if (a_config.Element == ElementType::kFullName) {
 				token = reader.GetToken();
@@ -483,12 +469,12 @@ namespace NPCs {
 			}
 			else if (a_config.Element == ElementType::kHeightMax || a_config.Element == ElementType::kHeightMin ||
 				     a_config.Element == ElementType::kWeightFat || a_config.Element == ElementType::kWeightMuscular || a_config.Element == ElementType::kWeightThin) {
-				std::optional<float> opValue = ParseNumber();
-				if (!opValue.has_value()) {
+				const auto valueOpt = ParseNumber<float>();
+				if (!valueOpt.has_value()) {
 					return false;
 				}
 
-				a_config.AssignValue = std::any(opValue.value());
+				a_config.AssignValue = std::any(valueOpt.value());
 			}
 			else if (a_config.Element == ElementType::kIsChargenFacePreset) {
 				token = reader.GetToken();
@@ -504,25 +490,17 @@ namespace NPCs {
 				}
 			}
 			else if (a_config.Element == ElementType::kSex) {
-				token = reader.GetToken();
-				if (token.empty()) {
-					logger::warn("Line {}, Col {}: Expected sex.", reader.GetLastLine(), reader.GetLastLineIndex());
+				const auto sexOpt = ParseNumber<std::uint8_t>();
+				if (!sexOpt.has_value()) {
 					return false;
 				}
 
-				unsigned long parsedValue;
-				auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-				if (parseResult.ec != std::errc()) {
-					logger::warn("Line {}, Col {}: Failed to parse sex '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				if (sexOpt.value() != 0 && sexOpt.value() != 1) {
+					logger::warn("Line {}, Col {}: Invalid value '{}'. For Sex, the value must be 0 or 1.", reader.GetLastLine(), reader.GetLastLineIndex(), sexOpt.value());
 					return false;
 				}
 
-				if (parsedValue != 0 && parsedValue != 1) {
-					logger::warn("Line {}, Col {}: Invalid value '{}'. For Sex, the value must be 0 or 1.", reader.GetLastLine(), reader.GetLastLineIndex(), parsedValue);
-					return false;
-				}
-
-				a_config.AssignValue = std::any(static_cast<std::uint8_t>(parsedValue));
+				a_config.AssignValue = std::any(sexOpt.value());
 			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
@@ -553,7 +531,7 @@ namespace NPCs {
 				return false;
 			}
 
-			bool isValidOperation = [](ElementType elem, OperationType op) {
+			auto isValidOperation = [](ElementType elem, OperationType op) -> bool {
 				switch (elem) {
 				case ElementType::kHeadParts:
 					return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete;
@@ -579,12 +557,12 @@ namespace NPCs {
 			switch (a_config.Element) {
 			case ElementType::kHeadParts:
 				if (newOp.OpType != OperationType::kClear) {
-					std::optional<std::string> opForm = ParseForm();
-					if (!opForm.has_value()) {
+					const auto formOpt = ParseForm();
+					if (!formOpt.has_value()) {
 						return false;
 					}
 
-					newOp.OpData = std::any(opForm.value());
+					newOp.OpData = std::any(formOpt.value());
 				}
 
 				break;
@@ -599,13 +577,13 @@ namespace NPCs {
 						return false;
 					}
 
-					auto morphKey = Utils::ParseHex(token);
-					if (!morphKey.has_value()) {
+					const auto morphKeyOpt = Utils::ParseHex(token);
+					if (!morphKeyOpt.has_value()) {
 						logger::warn("Line {}, Col {}: Failed to parse morphKey '{}'. The value must be a hexadecimal number.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 						return false;
 					}
 
-					morphData.Key = morphKey.value();
+					morphData.Key = morphKeyOpt.value();
 
 					if (newOp.OpType == OperationType::kSet) {
 						token = reader.GetToken();
@@ -614,17 +592,17 @@ namespace NPCs {
 							return false;
 						}
 
-						std::optional<float> morphValue = ParseNumber();
-						if (!morphValue.has_value()) {
+						const auto morphValueOpt = ParseNumber<float>();
+						if (!morphValueOpt.has_value()) {
 							return false;
 						}
 
-						if (morphValue.value() < 0.0f || morphValue.value() > 1.0f) {
-							logger::warn("Line {}, Col {}: Invalid morphValue '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), morphValue.value());
+						if (morphValueOpt.value() < 0.0f || morphValueOpt.value() > 1.0f) {
+							logger::warn("Line {}, Col {}: Invalid morphValue '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), morphValueOpt.value());
 							return false;
 						}
 
-						morphData.Value = morphValue.value();
+						morphData.Value = morphValueOpt.value();
 					}
 
 					newOp.OpData = std::any(morphData);
@@ -636,25 +614,11 @@ namespace NPCs {
 				if (newOp.OpType != OperationType::kClear) {
 					ConfigData::Operation::TintData tintData{};
 
-					token = reader.GetToken();
-					if (token.empty()) {
-						logger::warn("Line {}, Col {}: Expected tintIndex.", reader.GetLastLine(), reader.GetLastLineIndex());
+					const auto indexOpt = ParseNumber<std::uint16_t>();
+					if (!indexOpt.has_value()) {
 						return false;
 					}
-
-					unsigned long parsedValue;
-					auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-					if (parseResult.ec != std::errc()) {
-						logger::warn("Line {}, Col {}: Failed to parse tintIndex '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-						return false;
-					}
-
-					if (parsedValue > static_cast<unsigned long>(UINT16_MAX)) {
-						logger::warn("Line {}, Col {}: Invalid tintIndex '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-						return false;
-					}
-
-					tintData.Index = static_cast<std::uint16_t>(parsedValue);
+					tintData.Index = indexOpt.value();
 
 					if (newOp.OpType == OperationType::kSet) {
 						token = reader.GetToken();
@@ -663,24 +627,12 @@ namespace NPCs {
 							return false;
 						}
 
-						token = reader.GetToken();
-						if (token.empty()) {
-							logger::warn("Line {}, Col {}: Expected tintColorRed.", reader.GetLastLine(), reader.GetLastLineIndex());
+						const auto tintColorRedOpt = ParseNumber<std::uint8_t>();
+						if (!tintColorRedOpt.has_value()) {
 							return false;
 						}
 
-						parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-						if (parseResult.ec != std::errc()) {
-							logger::warn("Line {}, Col {}: Failed to parse tintColorRed '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-							return false;
-						}
-
-						if (parsedValue > static_cast<unsigned long>(UINT8_MAX)) {
-							logger::warn("Line {}, Col {}: Invalid tintColorRed '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-							return false;
-						}
-
-						std::uint32_t tintColor = parsedValue;
+						std::uint32_t tintColor = tintColorRedOpt.value();
 
 						token = reader.GetToken();
 						if (token != ",") {
@@ -688,24 +640,12 @@ namespace NPCs {
 							return false;
 						}
 
-						token = reader.GetToken();
-						if (token.empty()) {
-							logger::warn("Line {}, Col {}: Expected tintColorGreen.", reader.GetLastLine(), reader.GetLastLineIndex());
+						const auto tintColorGreenOpt = ParseNumber<std::uint8_t>();
+						if (!tintColorGreenOpt.has_value()) {
 							return false;
 						}
 
-						parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-						if (parseResult.ec != std::errc()) {
-							logger::warn("Line {}, Col {}: Failed to parse tintColorGreen '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-							return false;
-						}
-
-						if (parsedValue > static_cast<unsigned long>(UINT8_MAX)) {
-							logger::warn("Line {}, Col {}: Invalid tintColorGreen '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-							return false;
-						}
-
-						tintColor |= parsedValue << 8;
+						tintColor |= tintColorGreenOpt.value() << 8;
 
 						token = reader.GetToken();
 						if (token != ",") {
@@ -713,25 +653,12 @@ namespace NPCs {
 							return false;
 						}
 
-						token = reader.GetToken();
-						if (token.empty()) {
-							logger::warn("Line {}, Col {}: Expected tintColorBlue.", reader.GetLastLine(), reader.GetLastLineIndex());
+						const auto tintColorBlueOpt = ParseNumber<std::uint8_t>();
+						if (!tintColorBlueOpt.has_value()) {
 							return false;
 						}
 
-						parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-						if (parseResult.ec != std::errc()) {
-							logger::warn("Line {}, Col {}: Failed to parse tintColorBlue '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-							return false;
-						}
-
-						if (parsedValue > static_cast<unsigned long>(UINT8_MAX)) {
-							logger::warn("Line {}, Col {}: Invalid tintColorBlue '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-							return false;
-						}
-
-						tintColor |= parsedValue << 16;
-
+						tintColor |= tintColorBlueOpt.value() << 16;
 						tintData.Color = tintColor;
 
 						token = reader.GetToken();
@@ -740,17 +667,17 @@ namespace NPCs {
 							return false;
 						}
 
-						auto tintAlpha = ParseNumber();
-						if (!tintAlpha.has_value()) {
+						const auto tintAlphaOpt = ParseNumber<float>();
+						if (!tintAlphaOpt.has_value()) {
 							return false;
 						}
 
-						if (tintAlpha.value() < 0.0f || tintAlpha.value() > 1.0f) {
-							logger::warn("Line {}, Col {}: Invalid tintAlpha '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+						if (tintAlphaOpt.value() < 0.0f || tintAlphaOpt.value() > 1.0f) {
+							logger::warn("Line {}, Col {}: Invalid tintAlpha '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), tintAlphaOpt.value());
 							return false;
 						}
 
-						tintData.Alpha = tintAlpha.value();
+						tintData.Alpha = tintAlphaOpt.value();
 					}
 
 					newOp.OpData = std::any(tintData);
@@ -765,7 +692,7 @@ namespace NPCs {
 				return false;
 			}
 
-			a_config.Operations.push_back(newOp);
+			a_config.Operations.emplace_back(newOp);
 
 			return true;
 		}
@@ -777,48 +704,49 @@ namespace NPCs {
 
 	void Prepare(const ConfigData& a_configData) {
 		if (a_configData.Filter == FilterType::kFormID) {
-			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+			auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
 			if (!filterForm) {
 				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
 				return;
 			}
 
-			RE::TESNPC* npc = filterForm->As<RE::TESNPC>();
+			auto* npc = filterForm->As<RE::TESNPC>();
 			if (!npc) {
 				logger::warn("'{}' is not a NPC.", a_configData.FilterForm);
 				return;
 			}
 
 			if (a_configData.Element == ElementType::kClass) {
-				std::string classFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
-				RE::TESClass* _class = nullptr;
+				const auto classFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+				RE::TESClass* class_ = nullptr;
 
 				if (classFormStr != "null") {
-					RE::TESForm* classForm = Utils::GetFormFromString(classFormStr);
+					auto* classForm = Utils::GetFormFromString(classFormStr);
 					if (!classForm) {
 						logger::warn("Invalid Form: '{}'.", classFormStr);
 						return;
 					}
 
-					_class = classForm->As<RE::TESClass>();
-					if (!_class) {
+					class_ = classForm->As<RE::TESClass>();
+					if (!class_) {
 						logger::warn("'{}' is not a Class.", classFormStr);
 						return;
 					}
 				}
 
-				g_patchMap[npc].Class = _class;
+				g_patchMap[npc].Class = class_;
 			}
 			else if (a_configData.Element == ElementType::kCombatStyle) {
-				std::string comStyleFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+				const auto comStyleFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
 				RE::TESCombatStyle* comStyle = nullptr;
 
 				if (comStyleFormStr != "null") {
-					RE::TESForm* comStyleForm = Utils::GetFormFromString(comStyleFormStr);
+					auto* comStyleForm = Utils::GetFormFromString(comStyleFormStr);
 					if (!comStyleForm) {
 						logger::warn("Invalid Form: '{}'.", comStyleFormStr);
 						return;
 					}
+
 					comStyle = comStyleForm->As<RE::TESCombatStyle>();
 					if (!comStyle) {
 						logger::warn("'{}' is not a CombatStyle.", comStyleFormStr);
@@ -829,11 +757,11 @@ namespace NPCs {
 				g_patchMap[npc].CombatStyle = comStyle;
 			}
 			else if (a_configData.Element == ElementType::kDefaultOutfit) {
-				std::string outfitFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+				const auto outfitFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
 				RE::BGSOutfit* outfit = nullptr;
 
 				if (outfitFormStr != "null") {
-					RE::TESForm* outfitForm = Utils::GetFormFromString(outfitFormStr);
+					auto* outfitForm = Utils::GetFormFromString(outfitFormStr);
 					if (!outfitForm) {
 						logger::warn("Invalid Form: '{}'.", outfitFormStr);
 						return;
@@ -852,11 +780,11 @@ namespace NPCs {
 				g_patchMap[npc].FullName = std::any_cast<std::string>(a_configData.AssignValue.value());
 			}
 			else if (a_configData.Element == ElementType::kHairColor) {
-				std::string colorFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+				const auto colorFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
 				RE::BGSColorForm* color = nullptr;
 
 				if (colorFormStr != "null") {
-					RE::TESForm* colorForm = Utils::GetFormFromString(colorFormStr);
+					auto* colorForm = Utils::GetFormFromString(colorFormStr);
 					if (!colorForm) {
 						logger::warn("Invalid Form: '{}'.", colorFormStr);
 						return;
@@ -872,7 +800,7 @@ namespace NPCs {
 				g_patchMap[npc].HairColor = color;
 			}
 			else if (a_configData.Element == ElementType::kHeadParts) {
-				PatchData& patchData = g_patchMap[npc];
+				auto& patchData = g_patchMap[npc];
 
 				if (!patchData.HeadParts.has_value()) {
 					patchData.HeadParts = PatchData::HeadPartsData{};
@@ -883,15 +811,15 @@ namespace NPCs {
 						patchData.HeadParts->Clear = true;
 					}
 					else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kDelete) {
-						std::string opFormStr = std::any_cast<std::string>(op.OpData.value());
+						const auto opFormStr = std::any_cast<std::string>(op.OpData.value());
 
-						RE::TESForm* opForm = Utils::GetFormFromString(opFormStr);
+						auto* opForm = Utils::GetFormFromString(opFormStr);
 						if (!opForm) {
 							logger::warn("Invalid Form: '{}'.", opFormStr);
 							continue;
 						}
 
-						RE::BGSHeadPart* headPart = opForm->As<RE::BGSHeadPart>();
+						auto* headPart = opForm->As<RE::BGSHeadPart>();
 						if (!headPart) {
 							logger::warn("'{}' is not a HeadPart.", opFormStr);
 							continue;
@@ -907,11 +835,11 @@ namespace NPCs {
 				}
 			}
 			else if (a_configData.Element == ElementType::kHeadTexture) {
-				std::string texFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+				const auto texFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
 				RE::BGSTextureSet* textureSet = nullptr;
 
 				if (texFormStr != "null") {
-					RE::TESForm* texForm = Utils::GetFormFromString(texFormStr);
+					auto* texForm = Utils::GetFormFromString(texFormStr);
 					if (!texForm) {
 						logger::warn("Invalid Form: '{}'.", texFormStr);
 						return;
@@ -936,7 +864,7 @@ namespace NPCs {
 				g_patchMap[npc].IsChargenFacePreset = std::any_cast<bool>(a_configData.AssignValue.value());
 			}
 			else if (a_configData.Element == ElementType::kMorphs) {
-				PatchData& patchData = g_patchMap[npc];
+				auto& patchData = g_patchMap[npc];
 
 				if (!patchData.Morphs.has_value()) {
 					patchData.Morphs = PatchData::MorphsData{};
@@ -947,7 +875,7 @@ namespace NPCs {
 						patchData.Morphs->Clear = true;
 					}
 					else if (op.OpType == OperationType::kSet || op.OpType == OperationType::kDelete) {
-						auto morphData = std::any_cast<ConfigData::Operation::MorphData>(op.OpData.value());
+						const auto morphData = std::any_cast<ConfigData::Operation::MorphData>(op.OpData.value());
 
 						if (op.OpType == OperationType::kSet) {
 							patchData.Morphs->SetMorphMap.insert(std::make_pair(morphData.Key, morphData.Value));
@@ -959,11 +887,11 @@ namespace NPCs {
 				}
 			}
 			else if (a_configData.Element == ElementType::kRace) {
-				std::string raceFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+				const auto raceFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
 				RE::TESRace* race = nullptr;
 
 				if (raceFormStr != "null") {
-					RE::TESForm* raceForm = Utils::GetFormFromString(raceFormStr);
+					auto* raceForm = Utils::GetFormFromString(raceFormStr);
 					if (!raceForm) {
 						logger::warn("Invalid Form: '{}'.", raceFormStr);
 						return;
@@ -982,11 +910,11 @@ namespace NPCs {
 				g_patchMap[npc].Sex = std::any_cast<std::uint8_t>(a_configData.AssignValue.value());
 			}
 			else if (a_configData.Element == ElementType::kSkin) {
-				std::string armoFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+				const auto armoFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
 				RE::TESObjectARMO* armo = nullptr;
 
 				if (armoFormStr != "null") {
-					RE::TESForm* armoForm = Utils::GetFormFromString(armoFormStr);
+					auto* armoForm = Utils::GetFormFromString(armoFormStr);
 					if (!armoForm) {
 						logger::warn("Invalid Form: '{}'.", armoFormStr);
 						return;
@@ -1002,7 +930,7 @@ namespace NPCs {
 				g_patchMap[npc].Skin = armo;
 			}
 			else if (a_configData.Element == ElementType::kTints) {
-				PatchData& patchData = g_patchMap[npc];
+				auto& patchData = g_patchMap[npc];
 
 				if (!patchData.Tints.has_value()) {
 					patchData.Tints = PatchData::TintsData{};
@@ -1013,7 +941,7 @@ namespace NPCs {
 						patchData.Tints->Clear = true;
 					}
 					else if (op.OpType == OperationType::kSet || op.OpType == OperationType::kDelete) {
-						auto tintData = std::any_cast<ConfigData::Operation::TintData>(op.OpData.value());
+						const auto tintData = std::any_cast<ConfigData::Operation::TintData>(op.OpData.value());
 
 						if (op.OpType == OperationType::kSet) {
 							patchData.Tints->SetTintMap.insert(std::make_pair(tintData.Index, std::make_pair(tintData.Color, tintData.Alpha)));
@@ -1064,8 +992,7 @@ namespace NPCs {
 
 	void ClearHeadParts(RE::TESNPC* a_npc) {
 		if (a_npc->headParts) {
-			RE::MemoryManager& mm = RE::MemoryManager::GetSingleton();
-			mm.Deallocate(a_npc->headParts, false);
+			RE::free(a_npc->headParts);
 		}
 		a_npc->headParts = nullptr;
 		a_npc->numHeadParts = 0;

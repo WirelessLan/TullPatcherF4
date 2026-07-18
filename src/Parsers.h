@@ -1,5 +1,7 @@
 #pragma once
 
+#include <type_traits>
+
 #include "Configs.h"
 #include "Utils.h"
 
@@ -513,34 +515,32 @@ namespace Parsers {
 			return form;
 		}
 
-		std::optional<float> ParseNumber() {
+		template <typename T>
+		std::optional<T> ParseNumber() {
 			auto token = reader.GetToken();
 			if (token.empty()) {
 				logger::warn("Line {}, Col {}: Expected value.", reader.GetLastLine(), reader.GetLastLineIndex());
 				return std::nullopt;
 			}
 
-			std::string numStr = std::string(token);
-			if (reader.Peek() == ".") {
-				numStr += reader.GetToken();
+			std::string numStr{token};
+			
+			if constexpr (std::is_floating_point_v<T>) {
+				if (reader.Peek() == ".") {
+					numStr += reader.GetToken();
 
-				token = reader.GetToken();
-				if (token.empty()) {
-					logger::warn("Line {}, Col {}: Expected decimal value.", reader.GetLastLine(), reader.GetLastLineIndex());
-					return std::nullopt;
+					token = reader.GetToken();
+					if (token.empty()) {
+						logger::warn("Line {}, Col {}: Expected decimal value.", reader.GetLastLine(), reader.GetLastLineIndex());
+						return std::nullopt;
+					}
+
+					numStr += token;
 				}
-
-				numStr += std::string(token);
 			}
 
-			if (!Utils::IsValidDecimalNumber(numStr)) {
-				logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), numStr);
-				return std::nullopt;
-			}
-
-			float parsedValue;
-			auto parseResult = std::from_chars(numStr.data(), numStr.data() + numStr.size(), parsedValue);
-			if (parseResult.ec != std::errc()) {
+			T parsedValue{};
+			if (!Utils::ConvertNumber(numStr, parsedValue)) {
 				logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), numStr);
 				return std::nullopt;
 			}
@@ -549,47 +549,44 @@ namespace Parsers {
 		}
 
 		std::optional<std::uint32_t> ParseBipedSlot() {
-			auto token = reader.GetToken();
-			if (token.empty()) {
-				logger::warn("Line {}, Col {}: Expected bipedSlot.", reader.GetLastLine(), reader.GetLastLineIndex());
+			const auto parsedValueOpt = ParseNumber<std::uint32_t>();
+			if (!parsedValueOpt.has_value()) {
 				return std::nullopt;
 			}
 
-			unsigned long parsedValue = 0;
-
-			auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-			if (parseResult.ec != std::errc()) {
-				logger::warn("Line {}, Col {}: Failed to parse bipedSlot '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-				return std::nullopt;
-			}
-
+			const auto parsedValue = parsedValueOpt.value();
 			if (parsedValue != 0 && (parsedValue < 30 || parsedValue > 61)) {
-				logger::warn("Line {}, Col {}: Failed to parse bipedSlot '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+				logger::warn("Line {}, Col {}: Failed to parse bipedSlot '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), parsedValue);
 				return std::nullopt;
 			}
 
-			return static_cast<std::uint32_t>(parsedValue);
+			return parsedValue;
 		}
 
 		std::string GetBipedSlots(std::uint32_t a_bipedObjSlots) {
-			std::string retStr;
-			const std::string separator = " | ";
+			static constexpr std::uint32_t kBipedSlotOffset = 30u;
+			static constexpr std::uint32_t kMaxBipedSlotCount = 32u;
+			static constexpr std::string_view kSeparator = " | ";
 
 			if (a_bipedObjSlots == 0) {
 				return "0";
 			}
+			
+			std::string bipedSlots;
 
-			for (std::size_t slotIndex = 0; slotIndex < 32; ++slotIndex) {
-				if (a_bipedObjSlots & (1u << slotIndex)) {
-					retStr += std::to_string(slotIndex + 30) + separator;
+			for (std::uint32_t slotIndex = 0; slotIndex < kMaxBipedSlotCount; ++slotIndex) {
+				if ((a_bipedObjSlots & (1u << slotIndex)) == 0) {
+					continue;
 				}
+
+				if (!bipedSlots.empty()) {
+					bipedSlots += kSeparator;
+				}
+
+				bipedSlots += std::to_string(slotIndex + kBipedSlotOffset);
 			}
 
-			if (!retStr.empty()) {
-				retStr.erase(retStr.size() - separator.size());
-			}
-
-			return retStr;
+			return bipedSlots;
 		}
 
 		Configs::ConfigReader reader;

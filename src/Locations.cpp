@@ -110,34 +110,12 @@ namespace Locations {
 				if (!ParseAssignment(configData)) {
 					return std::nullopt;
 				}
-
-				token = reader.GetToken();
-				if (token != ";") {
-					logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
-					return std::nullopt;
-				}
 			}
 			else {
-				token = reader.GetToken();
-				if (token != ".") {
-					logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
-					return std::nullopt;
-				}
-
-				if (!ParseOperation(configData)) {
-					return std::nullopt;
-				}
-
-				while (true) {
-					token = reader.Peek();
-					if (token == ";") {
-						reader.GetToken();
-						break;
-					}
-
+				do {
 					token = reader.GetToken();
 					if (token != ".") {
-						logger::warn("Line {}, Col {}: Syntax error. Expected '.' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+						logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
 						return std::nullopt;
 					}
 
@@ -145,13 +123,20 @@ namespace Locations {
 						return std::nullopt;
 					}
 				}
+				while (reader.Peek() == ".");
+			}
+
+			token = reader.GetToken();
+			if (token != ";") {
+				logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+				return std::nullopt;
 			}
 
 			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
 		}
 
 		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
-			std::string indent = std::string(a_indent * 4, ' ');
+			auto indent = std::string(a_indent * 4, ' ');
 
 			switch (a_configData.Element) {
 			case ElementType::kFullName:
@@ -191,12 +176,12 @@ namespace Locations {
 				return false;
 			}
 
-			auto filterForm = ParseForm();
-			if (!filterForm.has_value()) {
+			const auto filterFormOpt = ParseForm();
+			if (!filterFormOpt.has_value()) {
 				return false;
 			}
 
-			a_configData.FilterForm = filterForm.value();
+			a_configData.FilterForm = filterFormOpt.value();
 
 			token = reader.GetToken();
 			if (token != ")") {
@@ -272,7 +257,7 @@ namespace Locations {
 				return false;
 			}
 
-			bool isValidOperation = [](ElementType elem, OperationType op) {
+			auto isValidOperation = [](ElementType elem, OperationType op) -> bool {
 				if (elem == ElementType::kKeywords) {
 					return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kAddIfNotExists || op == OperationType::kDelete;
 				}
@@ -292,11 +277,11 @@ namespace Locations {
 
 			if (a_configData.Element == ElementType::kKeywords) {
 				if (newOp.OpType != OperationType::kClear) {
-					auto form = ParseForm();
-					if (!form.has_value()) {
+					const auto formOpt = ParseForm();
+					if (!formOpt.has_value()) {
 						return false;
 					}
-					newOp.OpForm = form.value();
+					newOp.OpForm = formOpt.value();
 				}
 			}
 
@@ -318,19 +303,19 @@ namespace Locations {
 
 	void Prepare(const ConfigData& a_configData) {
 		if (a_configData.Filter == FilterType::kFormID) {
-			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+			auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
 			if (!filterForm) {
 				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
 				return;
 			}
 
-			RE::BGSLocation* location = filterForm->As<RE::BGSLocation>();
+			auto* location = filterForm->As<RE::BGSLocation>();
 			if (!location) {
 				logger::warn("'{}' is not a Location.", a_configData.FilterForm);
 				return;
 			}
 
-			PatchData& patchData = g_patchMap[location];
+			auto& patchData = g_patchMap[location];
 
 			if (a_configData.Element == ElementType::kFullName) {
 				patchData.FullName = a_configData.AssignValue.value();
@@ -345,13 +330,13 @@ namespace Locations {
 						patchData.Keywords->Clear = true;
 					}
 					else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kAddIfNotExists || op.OpType == OperationType::kDelete) {
-						RE::TESForm* opForm = Utils::GetFormFromString(op.OpForm.value());
+						auto* opForm = Utils::GetFormFromString(op.OpForm.value());
 						if (!opForm) {
 							logger::warn("Invalid Form: '{}'.", op.OpForm.value());
 							continue;
 						}
 
-						RE::BGSKeyword* keywordForm = opForm->As<RE::BGSKeyword>();
+						auto* keywordForm = opForm->As<RE::BGSKeyword>();
 						if (!keywordForm) {
 							logger::warn("'{}' is not a Keyword.", op.OpForm.value());
 							continue;

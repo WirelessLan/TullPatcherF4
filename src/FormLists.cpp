@@ -101,26 +101,10 @@ namespace FormLists {
 				return std::nullopt;
 			}
 
-			token = reader.GetToken();
-			if (token != ".") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-
-			if (!ParseOperation(configData)) {
-				return std::nullopt;
-			}
-
-			while (true) {
-				token = reader.Peek();
-				if (token == ";") {
-					reader.GetToken();
-					break;
-				}
-
+			do {
 				token = reader.GetToken();
 				if (token != ".") {
-					logger::warn("Line {}, Col {}: Syntax error. Expected '.' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
 					return std::nullopt;
 				}
 
@@ -128,12 +112,19 @@ namespace FormLists {
 					return std::nullopt;
 				}
 			}
+			while (reader.Peek() == ".");
+
+			token = reader.GetToken();
+			if (token != ";") {
+				logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+				return std::nullopt;
+			}
 
 			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
 		}
 
 		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
-			std::string indent = std::string(a_indent * 4, ' ');
+			auto indent = std::string(a_indent * 4, ' ');
 
 			switch (a_configData.Element) {
 			case ElementType::kList:
@@ -168,12 +159,12 @@ namespace FormLists {
 				return false;
 			}
 
-			auto filterForm = ParseForm();
-			if (!filterForm.has_value()) {
+			const auto filterFormOpt = ParseForm();
+			if (!filterFormOpt.has_value()) {
 				return false;
 			}
 
-			a_configData.FilterForm = filterForm.value();
+			a_configData.FilterForm = filterFormOpt.value();
 
 			token = reader.GetToken();
 			if (token != ")") {
@@ -218,7 +209,7 @@ namespace FormLists {
 				return false;
 			}
 
-			bool isValidOperation = [](ElementType elem, OperationType op) {
+			auto isValidOperation = [](ElementType elem, OperationType op) -> bool {
 				if (elem == ElementType::kList) {
 					return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kAddIfNotExists || op == OperationType::kDelete;
 				}
@@ -238,11 +229,11 @@ namespace FormLists {
 
 			if (a_configData.Element == ElementType::kList) {
 				if (newOp.OpType != OperationType::kClear) {
-					auto form = ParseForm();
-					if (!form.has_value()) {
+					const auto formOpt = ParseForm();
+					if (!formOpt.has_value()) {
 						return false;
 					}
-					newOp.OpForm = form.value();
+					newOp.OpForm = formOpt.value();
 				}
 			}
 
@@ -252,7 +243,7 @@ namespace FormLists {
 				return false;
 			}
 
-			a_configData.Operations.push_back(newOp);
+			a_configData.Operations.emplace_back(newOp);
 
 			return true;
 		}
@@ -264,19 +255,19 @@ namespace FormLists {
 
 	void Prepare(const ConfigData& a_configData) {
 		if (a_configData.Filter == FilterType::kFormID) {
-			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+			auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
 			if (!filterForm) {
 				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
 				return;
 			}
 
-			RE::BGSListForm* formList = filterForm->As<RE::BGSListForm>();
+			auto* formList = filterForm->As<RE::BGSListForm>();
 			if (!formList) {
 				logger::warn("'{}' is not a FormList.", a_configData.FilterForm);
 				return;
 			}
 
-			PatchData& patchData = g_patchMap[formList];
+			auto& patchData = g_patchMap[formList];
 
 			if (a_configData.Element == ElementType::kList) {
 				if (!patchData.List.has_value()) {
@@ -288,7 +279,7 @@ namespace FormLists {
 						patchData.List->Clear = true;
 					}
 					else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kAddIfNotExists || op.OpType == OperationType::kDelete) {
-						RE::TESForm* opForm = Utils::GetFormFromString(op.OpForm.value());
+						auto* opForm = Utils::GetFormFromString(op.OpForm.value());
 						if (!opForm) {
 							logger::warn("Invalid Form: '{}'.", op.OpForm.value());
 							continue;

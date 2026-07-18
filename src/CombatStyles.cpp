@@ -369,12 +369,12 @@ namespace CombatStyles
 				return false;
 			}
 
-			auto filterForm = ParseForm();
-			if (!filterForm.has_value()) {
+			const auto filterFormOpt = ParseForm();
+			if (!filterFormOpt.has_value()) {
 				return false;
 			}
 
-			a_configData.FilterForm = filterForm.value();
+			a_configData.FilterForm = filterFormOpt.value();
 
 			token = reader.GetToken();
 			if (token != ")") {
@@ -595,62 +595,40 @@ namespace CombatStyles
 				a_configData.Element == ElementType::kPerchAttackChance ||
 				a_configData.Element == ElementType::kPerchAttackTime ||
 				a_configData.Element == ElementType::kFlyingAttackChance) {
-				std::optional<float> parsedValue = ParseNumber();
-				if (!parsedValue.has_value()) {
+				const auto valueOpt = ParseNumber<float>();
+				if (!valueOpt.has_value()) {
 					return false;
 				}
 
-				a_configData.AssignValue = std::any(parsedValue.value());
+				a_configData.AssignValue = std::any(valueOpt.value());
 			}
 			else if (a_configData.Element == ElementType::kThrowMaxTargets) {
-				token = reader.GetToken();
-				if (token.empty()) {
-					logger::warn("Line {}, Col {}: Expected value.", reader.GetLastLine(), reader.GetLastLineIndex());
+				const auto valueOpt = ParseNumber<std::uint32_t>();
+				if (!valueOpt.has_value()) {
 					return false;
 				}
 
-				unsigned long parsedValue;
-				auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-				if (parseResult.ec != std::errc() || parseResult.ptr != token.data() + token.size()) {
-					logger::warn("Line {}, Col {}: Failed to parse value '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-					return false;
-				}
-
-				if (parsedValue > static_cast<unsigned long>(UINT32_MAX)) {
-					logger::warn("Line {}, Col {}: Value '{}' out of range.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-					return false;
-				}
-
-				a_configData.AssignValue = std::any(static_cast<std::uint32_t>(parsedValue));
+				a_configData.AssignValue = std::any(valueOpt.value());
 			}
 			else if (a_configData.Element == ElementType::kFlags) {
 				std::uint32_t flagValue = 0;
 
-				auto flag = ParseFlag();
-				if (!flag.has_value()) {
+				auto flagOpt = ParseFlag();
+				if (!flagOpt.has_value()) {
 					return false;
 				}
 
-				flagValue |= flag.value();
+				flagValue |= flagOpt.value();
 
-				while (true) {
-					token = reader.Peek();
-					if (token == ";") {
-						break;
-					}
+				while (reader.Peek() == "|") {
+					reader.GetToken();
 
-					token = reader.GetToken();
-					if (token != "|") {
-						logger::warn("Line {}, Col {}: Syntax error. Expected '|' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					flagOpt = ParseFlag();
+					if (!flagOpt.has_value()) {
 						return false;
 					}
 
-					flag = ParseFlag();
-					if (!flag.has_value()) {
-						return false;
-					}
-
-					flagValue |= flag.value();
+					flagValue |= flagOpt.value();
 				}
 
 				a_configData.AssignValue = std::any(flagValue);
@@ -697,30 +675,31 @@ namespace CombatStyles
 
 		std::string GetFlags(std::uint32_t a_flags)
 		{
-			std::string retStr;
-			std::string separtor = " | ";
+			static constexpr std::string_view kSeparator = " | ";
+
+			std::string flags;
 
 			if (a_flags & 0x01) {
-				retStr += "Dueling" + separtor;
+				flags += "Dueling | ";
 			}
 			if (a_flags & 0x02) {
-				retStr += "Flanking" + separtor;
+				flags += "Flanking | ";
 			}
 			if (a_flags & 0x04) {
-				retStr += "AllowDualWielding" + separtor;
+				flags += "AllowDualWielding | ";
 			}
 			if (a_flags & 0x08) {
-				retStr += "Charging" + separtor;
+				flags += "Charging | ";
 			}
 			if (a_flags & 0x10) {
-				retStr += "RetargetAnyNearbyMeleeTarget" + separtor;
+				flags += "RetargetAnyNearbyMeleeTarget | ";
 			}
 
-			if (retStr.empty()) {
+			if (flags.empty()) {
 				return "None";
 			}
 
-			return retStr.substr(0, retStr.size() - separtor.size());
+			return flags.substr(0, flags.size() - kSeparator.size());
 		}
 	};
 
@@ -732,13 +711,13 @@ namespace CombatStyles
 	void Prepare(const ConfigData& a_configData)
 	{
 		if (a_configData.Filter == FilterType::kFormID) {
-			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+			auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
 			if (!filterForm) {
 				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
 				return;
 			}
 
-			RE::TESCombatStyle* combatStyle = filterForm->As<RE::TESCombatStyle>();
+			auto* combatStyle = filterForm->As<RE::TESCombatStyle>();
 			if (!combatStyle) {
 				logger::warn("'{}' is not a CombatStyle.", a_configData.FilterForm);
 				return;

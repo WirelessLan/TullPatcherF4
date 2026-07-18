@@ -464,25 +464,10 @@ namespace ImageSpaceAdapters
 				}
 			}
 			else {
-				token = reader.GetToken();
-				if (token != ".") {
-					logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
-					return std::nullopt;
-				}
-
-				if (!ParseOperation(configData)) {
-					return std::nullopt;
-				}
-
-				while (true) {
-					token = reader.Peek();
-					if (token == ";") {
-						break;
-					}
-
+				do {
 					token = reader.GetToken();
 					if (token != ".") {
-						logger::warn("Line {}, Col {}: Syntax error. Expected '.' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+						logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
 						return std::nullopt;
 					}
 
@@ -490,6 +475,7 @@ namespace ImageSpaceAdapters
 						return std::nullopt;
 					}
 				}
+				while (reader.Peek() == ".");
 			}
 
 			token = reader.GetToken();
@@ -503,7 +489,7 @@ namespace ImageSpaceAdapters
 
 		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override
 		{
-			std::string indent = std::string(a_indent * 4, ' ');
+			auto indent = std::string(a_indent * 4, ' ');
 
 			switch (a_configData.Element) {
 			case ElementType::kAnimatable:
@@ -564,7 +550,7 @@ namespace ImageSpaceAdapters
 					}
 
 					case OperationType::kAdd: {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(a_configData.Operations[opIndex].Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(a_configData.Operations[opIndex].Data.value());
 						opLog = fmt::format(".{}({}, {})", OperationTypeToString(a_configData.Operations[opIndex].Type), data.Time, data.Value);
 						break;
 					}
@@ -591,7 +577,7 @@ namespace ImageSpaceAdapters
 					}
 
 					case OperationType::kAdd: {
-						auto data = std::any_cast<ConfigData::Operation::ColorData>(a_configData.Operations[opIndex].Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::ColorData>(a_configData.Operations[opIndex].Data.value());
 						opLog = fmt::format(".{}({}, {}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].Type), data.Time, data.Red, data.Green, data.Blue, data.Alpha);
 						break;
 					}
@@ -624,12 +610,12 @@ namespace ImageSpaceAdapters
 				return false;
 			}
 
-			auto filterForm = ParseForm();
-			if (!filterForm.has_value()) {
+			const auto filterFormOpt = ParseForm();
+			if (!filterFormOpt.has_value()) {
 				return false;
 			}
 
-			a_config.FilterForm = filterForm.value();
+			a_config.FilterForm = filterFormOpt.value();
 
 			token = reader.GetToken();
 			if (token != ")") {
@@ -802,12 +788,12 @@ namespace ImageSpaceAdapters
 				}
 			}
 			else if (a_config.Element == ElementType::kDuration || a_config.Element == ElementType::kRadialBlurCenterX || a_config.Element == ElementType::kRadialBlurCenterY) {
-				std::optional<float> parsedValue = ParseNumber();
-				if (!parsedValue.has_value()) {
+				const auto valueOpt = ParseNumber<float>();
+				if (!valueOpt.has_value()) {
 					return false;
 				}
 
-				a_config.AssignValue = std::any(parsedValue.value());
+				a_config.AssignValue = std::any(valueOpt.value());
 			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
@@ -833,7 +819,7 @@ namespace ImageSpaceAdapters
 				return false;
 			}
 
-			bool isValidOperation = [](ElementType elem, OperationType op) {
+			auto isValidOperation = [](ElementType elem, OperationType op) -> bool {
 				switch (elem) {
 				case ElementType::kBlurRadius:
 				case ElementType::kDoubleVisionStrength:
@@ -927,12 +913,11 @@ namespace ImageSpaceAdapters
 				if (newOp.Type != OperationType::kClear) {
 					ConfigData::Operation::FloatData floatData{};
 
-					auto parsedValue = ParseNumber();
-					if (!parsedValue.has_value()) {
+					auto parsedNumberOpt = ParseNumber<float>();
+					if (!parsedNumberOpt.has_value()) {
 						return false;
 					}
-
-					floatData.Time = parsedValue.value();
+					floatData.Time = parsedNumberOpt.value();
 
 					token = reader.GetToken();
 					if (token != ",") {
@@ -940,12 +925,11 @@ namespace ImageSpaceAdapters
 						return false;
 					}
 
-					parsedValue = ParseNumber();
-					if (!parsedValue.has_value()) {
+					parsedNumberOpt = ParseNumber<float>();
+					if (!parsedNumberOpt.has_value()) {
 						return false;
 					}
-
-					floatData.Value = parsedValue.value();
+					floatData.Value = parsedNumberOpt.value();
 
 					newOp.Data = std::any(floatData);
 				}
@@ -954,12 +938,11 @@ namespace ImageSpaceAdapters
 				if (newOp.Type != OperationType::kClear) {
 					ConfigData::Operation::ColorData colorData{};
 
-					auto parsedValue = ParseNumber();
-					if (!parsedValue.has_value()) {
+					auto parsedNumberOpt = ParseNumber<float>();
+					if (!parsedNumberOpt.has_value()) {
 						return false;
 					}
-
-					colorData.Time = parsedValue.value();
+					colorData.Time = parsedNumberOpt.value();
 
 					token = reader.GetToken();
 					if (token != ",") {
@@ -967,12 +950,11 @@ namespace ImageSpaceAdapters
 						return false;
 					}
 
-					parsedValue = ParseNumber();
-					if (!parsedValue.has_value()) {
+					parsedNumberOpt = ParseNumber<float>();
+					if (!parsedNumberOpt.has_value()) {
 						return false;
 					}
-
-					colorData.Red = parsedValue.value();
+					colorData.Red = parsedNumberOpt.value();
 
 					token = reader.GetToken();
 					if (token != ",") {
@@ -980,12 +962,11 @@ namespace ImageSpaceAdapters
 						return false;
 					}
 
-					parsedValue = ParseNumber();
-					if (!parsedValue.has_value()) {
+					parsedNumberOpt = ParseNumber<float>();
+					if (!parsedNumberOpt.has_value()) {
 						return false;
 					}
-
-					colorData.Green = parsedValue.value();
+					colorData.Green = parsedNumberOpt.value();
 
 					token = reader.GetToken();
 					if (token != ",") {
@@ -993,12 +974,11 @@ namespace ImageSpaceAdapters
 						return false;
 					}
 
-					parsedValue = ParseNumber();
-					if (!parsedValue.has_value()) {
+					parsedNumberOpt = ParseNumber<float>();
+					if (!parsedNumberOpt.has_value()) {
 						return false;
 					}
-
-					colorData.Blue = parsedValue.value();
+					colorData.Blue = parsedNumberOpt.value();
 
 					token = reader.GetToken();
 					if (token != ",") {
@@ -1006,12 +986,11 @@ namespace ImageSpaceAdapters
 						return false;
 					}
 
-					parsedValue = ParseNumber();
-					if (!parsedValue.has_value()) {
+					parsedNumberOpt = ParseNumber<float>();
+					if (!parsedNumberOpt.has_value()) {
 						return false;
 					}
-
-					colorData.Alpha = parsedValue.value();
+					colorData.Alpha = parsedNumberOpt.value();
 
 					newOp.Data = std::any(colorData);
 				}
@@ -1023,7 +1002,7 @@ namespace ImageSpaceAdapters
 				return false;
 			}
 
-			a_config.Operations.push_back(newOp);
+			a_config.Operations.emplace_back(newOp);
 
 			return true;
 		}
@@ -1037,13 +1016,13 @@ namespace ImageSpaceAdapters
 	void Prepare(const ConfigData& a_configData)
 	{
 		if (a_configData.Filter == FilterType::kFormID) {
-			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+			auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
 			if (!filterForm) {
 				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
 				return;
 			}
 
-			RE::TESImageSpaceModifier* imageSpaceAdapter = filterForm->As<RE::TESImageSpaceModifier>();
+			auto* imageSpaceAdapter = filterForm->As<RE::TESImageSpaceModifier>();
 			if (!imageSpaceAdapter) {
 				logger::warn("'{}' is not an ImageSpaceAdapter.", a_configData.FilterForm);
 				return;
@@ -1065,7 +1044,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].BlurRadius->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].BlurRadius->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1080,7 +1059,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].DoubleVisionStrength->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].DoubleVisionStrength->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1095,7 +1074,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].TintColor->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::ColorData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::ColorData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].TintColor->AddVec.push_back({ data.Time, { data.Red, data.Green, data.Blue, data.Alpha } });
 					}
 				}
@@ -1110,7 +1089,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].FadeColor->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::ColorData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::ColorData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].FadeColor->AddVec.push_back({ data.Time, { data.Red, data.Green, data.Blue, data.Alpha } });
 					}
 				}
@@ -1134,7 +1113,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].RadialBlurStrength->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].RadialBlurStrength->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1149,7 +1128,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].RadialBlurRampUp->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].RadialBlurRampUp->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1164,7 +1143,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].RadialBlurRampDown->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].RadialBlurRampDown->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1179,7 +1158,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].RadialBlurStart->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].RadialBlurStart->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1194,7 +1173,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].RadialBlurDownStart->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].RadialBlurDownStart->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1212,7 +1191,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].DepthOfFieldStrength->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].DepthOfFieldStrength->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1227,7 +1206,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].DepthOfFieldDistance->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].DepthOfFieldDistance->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1242,7 +1221,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].DepthOfFieldRange->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].DepthOfFieldRange->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1257,7 +1236,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].DepthOfFieldVignetteRadius->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].DepthOfFieldVignetteRadius->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1272,7 +1251,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].DepthOfFieldVignetteStrength->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].DepthOfFieldVignetteStrength->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1287,7 +1266,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].MotionBlurStrength->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].MotionBlurStrength->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1302,7 +1281,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].HDREyeAdaptSpeedMult->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].HDREyeAdaptSpeedMult->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1317,7 +1296,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].HDREyeAdaptSpeedAdd->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].HDREyeAdaptSpeedAdd->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1332,7 +1311,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].HDRBloomBlurRadiusMult->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].HDRBloomBlurRadiusMult->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1347,7 +1326,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].HDRBloomBlurRadiusAdd->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].HDRBloomBlurRadiusAdd->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1362,7 +1341,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].HDRBloomThresholdMult->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].HDRBloomThresholdMult->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1377,7 +1356,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].HDRBloomThresholdAdd->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].HDRBloomThresholdAdd->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1392,7 +1371,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].HDRBloomScaleMult->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].HDRBloomScaleMult->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1407,7 +1386,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].HDRBloomScaleAdd->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].HDRBloomScaleAdd->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1422,7 +1401,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].HDRTargetLumMinMult->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].HDRTargetLumMinMult->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1437,7 +1416,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].HDRTargetLumMinAdd->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].HDRTargetLumMinAdd->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1452,7 +1431,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].HDRTargetLumMaxMult->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].HDRTargetLumMaxMult->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1467,7 +1446,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].HDRTargetLumMaxAdd->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].HDRTargetLumMaxAdd->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1482,7 +1461,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].HDRSunlightScaleMult->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].HDRSunlightScaleMult->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1497,7 +1476,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].HDRSunlightScaleAdd->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].HDRSunlightScaleAdd->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1512,7 +1491,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].HDRSkyScaleMult->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].HDRSkyScaleMult->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1527,7 +1506,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].HDRSkyScaleAdd->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].HDRSkyScaleAdd->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1542,7 +1521,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].CinematicSaturationMult->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].CinematicSaturationMult->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1557,7 +1536,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].CinematicSaturationAdd->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].CinematicSaturationAdd->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1572,7 +1551,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].CinematicBrightnessMult->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].CinematicBrightnessMult->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1587,7 +1566,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].CinematicBrightnessAdd->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].CinematicBrightnessAdd->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1602,7 +1581,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].CinematicContrastMult->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].CinematicContrastMult->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1617,7 +1596,7 @@ namespace ImageSpaceAdapters
 						g_patchMap[imageSpaceAdapter].CinematicContrastAdd->Clear = true;
 					}
 					else if (operation.Type == OperationType::kAdd) {
-						auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
+						const auto data = std::any_cast<ConfigData::Operation::FloatData>(operation.Data.value());
 						g_patchMap[imageSpaceAdapter].CinematicContrastAdd->AddVec.push_back({ data.Time, data.Value });
 					}
 				}
@@ -1631,43 +1610,46 @@ namespace ImageSpaceAdapters
 
 	std::vector<PatchData::FloatInterpolatorData::FloatData> GetFloatData(RE::NiFloatInterpolator* a_interpolator)
 	{
-		std::vector<PatchData::FloatInterpolatorData::FloatData> floatDataVec;
+		std::vector<PatchData::FloatInterpolatorData::FloatData> floatData;
+
 		if (!a_interpolator || !a_interpolator->floatData) {
-			return floatDataVec;
+			return floatData;
 		}
 
-		auto numKeys = a_interpolator->floatData->numKeys;
-		auto data = a_interpolator->floatData->data;
+		const auto numKeys = a_interpolator->floatData->numKeys;
+		const auto* data = a_interpolator->floatData->data;
 
 		if (numKeys == 0 || !data) {
-			return floatDataVec;
+			return floatData;
 		}
 
 		for (std::uint32_t floatIndex = 0; floatIndex < numKeys; floatIndex++) {
-			floatDataVec.push_back({ data[floatIndex].time, data[floatIndex].value });
+			floatData.push_back({ data[floatIndex].time, data[floatIndex].value });
 		}
 
-		return floatDataVec;
+		return floatData;
 	}
 
 	std::vector<PatchData::ColorInterpolatorData::ColorData> GetColorData(RE::NiColorInterpolator* a_interpolator)
 	{
-		std::vector<PatchData::ColorInterpolatorData::ColorData> colorDataVec;
+		std::vector<PatchData::ColorInterpolatorData::ColorData> colorData;
+
 		if (!a_interpolator || !a_interpolator->colorData) {
-			return colorDataVec;
+			return colorData;
 		}
 
-		auto numKeys = a_interpolator->colorData->numKeys;
-		auto data = a_interpolator->colorData->data;
+		const auto numKeys = a_interpolator->colorData->numKeys;
+		const auto* data = a_interpolator->colorData->data;
+
 		if (numKeys == 0 || !data) {
-			return colorDataVec;
+			return colorData;
 		}
 
 		for (std::uint32_t colorIndex = 0; colorIndex < numKeys; colorIndex++) {
-			colorDataVec.push_back({ data[colorIndex].time, data[colorIndex].color });
+			colorData.push_back({ data[colorIndex].time, data[colorIndex].color });
 		}
 
-		return colorDataVec;
+		return colorData;
 	}
 
 	void SetFloatData(std::uint32_t& a_keySize, RE::NiPointer<RE::NiFloatInterpolator>& a_interpolator, const std::vector<PatchData::FloatInterpolatorData::FloatData>& a_floatDataVec)
@@ -1691,7 +1673,7 @@ namespace ImageSpaceAdapters
 		}
 
 		if (!a_interpolator.get()) {
-			auto storage = RE::malloc(sizeof(RE::NiFloatInterpolator));
+			auto* storage = RE::malloc(sizeof(RE::NiFloatInterpolator));
 			if (!storage) {
 				logger::error("Failed to allocate memory for NiFloatInterpolator.");
 				return;
@@ -1700,7 +1682,7 @@ namespace ImageSpaceAdapters
 		}
 
 		if (!a_interpolator->floatData) {
-			auto storage = RE::malloc(sizeof(RE::NiFloatData));
+			auto* storage = RE::malloc(sizeof(RE::NiFloatData));
 			if (!storage) {
 				logger::error("Failed to allocate memory for NiFloatData.");
 				return;
@@ -1713,7 +1695,7 @@ namespace ImageSpaceAdapters
 			a_interpolator->floatData->data = nullptr;
 		}
 
-		auto dataStorage = RE::malloc(sizeof(RE::NiFloatData::Data) * a_floatDataVec.size());
+		auto* dataStorage = RE::malloc(sizeof(RE::NiFloatData::Data) * a_floatDataVec.size());
 		if (!dataStorage) {
 			logger::error("Failed to allocate memory for NiFloatData::Data.");
 			return;
@@ -1722,7 +1704,6 @@ namespace ImageSpaceAdapters
 		for (std::size_t floatIndex = 0; floatIndex < a_floatDataVec.size(); floatIndex++) {
 			auto& [time, value] = a_floatDataVec[floatIndex];
 			auto& data = reinterpret_cast<RE::NiFloatData::Data*>(dataStorage)[floatIndex];
-			data = {};
 			data.time = time;
 			data.value = value;
 		}
@@ -1756,7 +1737,7 @@ namespace ImageSpaceAdapters
 		}
 
 		if (!a_interpolator.get()) {
-			auto storage = RE::malloc(sizeof(RE::NiColorInterpolator));
+			auto* storage = RE::malloc(sizeof(RE::NiColorInterpolator));
 			if (!storage) {
 				logger::error("Failed to allocate memory for NiColorInterpolator.");
 				return;
@@ -1765,7 +1746,7 @@ namespace ImageSpaceAdapters
 		}
 
 		if (!a_interpolator->colorData) {
-			auto storage = RE::malloc(sizeof(RE::NiColorData));
+			auto* storage = RE::malloc(sizeof(RE::NiColorData));
 			if (!storage) {
 				logger::error("Failed to allocate memory for NiColorData.");
 				return;
@@ -1778,7 +1759,7 @@ namespace ImageSpaceAdapters
 			a_interpolator->colorData->data = nullptr;
 		}
 
-		auto dataStorage = RE::malloc(sizeof(RE::NiColorData::Data) * a_colorDataVec.size());
+		auto* dataStorage = RE::malloc(sizeof(RE::NiColorData::Data) * a_colorDataVec.size());
 		if (!dataStorage) {
 			logger::error("Failed to allocate memory for NiColorData::Data.");
 			return;
@@ -1787,7 +1768,6 @@ namespace ImageSpaceAdapters
 		for (std::size_t colorIndex = 0; colorIndex < a_colorDataVec.size(); colorIndex++) {
 			auto& [time, color] = a_colorDataVec[colorIndex];
 			auto& data = reinterpret_cast<RE::NiColorData::Data*>(dataStorage)[colorIndex];
-			data = {};
 			data.time = time;
 			data.color = color;
 		}

@@ -488,26 +488,10 @@ namespace DefaultObjectManagers {
 				return std::nullopt;
 			}
 
-			token = reader.GetToken();
-			if (token != ".") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-
-			if (!ParseOperation(configData)) {
-				return std::nullopt;
-			}
-
-			while (true) {
-				token = reader.Peek();
-				if (token == ";") {
-					reader.GetToken();
-					break;
-				}
-
+			do {
 				token = reader.GetToken();
 				if (token != ".") {
-					logger::warn("Line {}, Col {}: Syntax error. Expected '.' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
 					return std::nullopt;
 				}
 
@@ -515,12 +499,19 @@ namespace DefaultObjectManagers {
 					return std::nullopt;
 				}
 			}
+			while (reader.Peek() == ".");
+
+			token = reader.GetToken();
+			if (token != ";") {
+				logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+				return std::nullopt;
+			}
 
 			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
 		}
 
 		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
-			std::string indent = std::string(a_indent * 4, ' ');
+			auto indent = std::string(a_indent * 4, ' ');
 
 			switch (a_configData.Element) {
 			case ElementType::kObjects:
@@ -555,12 +546,12 @@ namespace DefaultObjectManagers {
 				return false;
 			}
 
-			auto filterForm = ParseForm();
-			if (!filterForm.has_value()) {
+			const auto filterFormOpt = ParseForm();
+			if (!filterFormOpt.has_value()) {
 				return false;
 			}
 
-			a_configData.FilterForm = filterForm.value();
+			a_configData.FilterForm = filterFormOpt.value();
 
 			token = reader.GetToken();
 			if (token != ")") {
@@ -596,7 +587,7 @@ namespace DefaultObjectManagers {
 				return false;
 			}
 
-			bool isValidOperation = [](ElementType elem, OperationType op) {
+			auto isValidOperation = [](ElementType elem, OperationType op) -> bool {
 				switch (elem) {
 				case ElementType::kObjects:
 					return op == OperationType::kSet;
@@ -619,8 +610,7 @@ namespace DefaultObjectManagers {
 			if (a_configData.Element == ElementType::kObjects) {
 				ConfigData::Operation::ObjectData objData{};
 
-				token = reader.GetToken();
-				objData.Use = std::string(token);
+				objData.Use = reader.GetToken();
 
 				token = reader.GetToken();
 				if (token != ",") {
@@ -633,11 +623,11 @@ namespace DefaultObjectManagers {
 					objData.ObjectID = reader.GetToken();
 				}
 				else {
-					std::optional<std::string> form = ParseForm();
-					if (!form.has_value()) {
+					const auto formOpt = ParseForm();
+					if (!formOpt.has_value()) {
 						return false;
 					}
-					objData.ObjectID = form.value();
+					objData.ObjectID = formOpt.value();
 				}
 
 				newOp.OpData = objData;
@@ -649,7 +639,7 @@ namespace DefaultObjectManagers {
 				return false;
 			}
 
-			a_configData.Operations.push_back(newOp);
+			a_configData.Operations.emplace_back(newOp);
 
 			return true;
 		}
@@ -661,19 +651,19 @@ namespace DefaultObjectManagers {
 
 	void Prepare(const ConfigData& a_configData) {
 		if (a_configData.Filter == FilterType::kFormID) {
-			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+			auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
 			if (!filterForm) {
 				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
 				return;
 			}
 
-			RE::BGSDefaultObjectManager* defObjManager = filterForm->As<RE::BGSDefaultObjectManager>();
+			auto* defObjManager = filterForm->As<RE::BGSDefaultObjectManager>();
 			if (!defObjManager) {
 				logger::warn("'{}' is not a DefaultObjectManager.", a_configData.FilterForm);
 				return;
 			}
 
-			PatchData& patchData = g_patchMap[defObjManager];
+			auto& patchData = g_patchMap[defObjManager];
 
 			if (a_configData.Element == ElementType::kObjects) {
 				if (!patchData.Objects.has_value()) {
@@ -682,7 +672,7 @@ namespace DefaultObjectManagers {
 
 				for (const auto& op : a_configData.Operations) {
 					if (op.OpType == OperationType::kSet) {
-						auto it = g_defaultObjectsMap.find(op.OpData->Use);
+						const auto it = g_defaultObjectsMap.find(op.OpData->Use);
 						if (it == g_defaultObjectsMap.end()) {
 							logger::warn("Invalid Object Use Name: '{}'.", op.OpData->Use);
 							continue;
@@ -692,7 +682,7 @@ namespace DefaultObjectManagers {
 							patchData.Objects->SetObjectMap.insert({ it->second, nullptr });
 						}
 						else {
-							RE::TESForm* objForm = Utils::GetFormFromString(op.OpData->ObjectID);
+							auto* objForm = Utils::GetFormFromString(op.OpData->ObjectID);
 							if (!objForm) {
 								logger::warn("Invalid Form: '{}'.", op.OpData->ObjectID);
 								continue;

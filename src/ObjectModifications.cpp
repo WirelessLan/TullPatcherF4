@@ -342,26 +342,10 @@ namespace ObjectModifications {
 				return std::nullopt;
 			}
 
-			token = reader.GetToken();
-			if (token != ".") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-
-			if (!ParseOperation(configData)) {
-				return std::nullopt;
-			}
-
-			while (true) {
-				token = reader.Peek();
-				if (token == ";") {
-					reader.GetToken();
-					break;
-				}
-
+			do {
 				token = reader.GetToken();
 				if (token != ".") {
-					logger::warn("Line {}, Col {}: Syntax error. Expected '.' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
 					return std::nullopt;
 				}
 
@@ -369,12 +353,19 @@ namespace ObjectModifications {
 					return std::nullopt;
 				}
 			}
+			while (reader.Peek() == ".");
+
+			token = reader.GetToken();
+			if (token != ";") {
+				logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+				return std::nullopt;
+			}
 
 			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
 		}
 
 		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
-			std::string indent = std::string(a_indent * 4, ' ');
+			auto indent = std::string(a_indent * 4, ' ');
 
 			switch (a_configData.Element) {
 			case ElementType::kProperties:
@@ -437,12 +428,12 @@ namespace ObjectModifications {
 				return false;
 			}
 
-			auto filterForm = ParseForm();
-			if (!filterForm.has_value()) {
+			const auto filterFormOpt = ParseForm();
+			if (!filterFormOpt.has_value()) {
 				return false;
 			}
 
-			a_configData.FilterForm = filterForm.value();
+			a_configData.FilterForm = filterFormOpt.value();
 
 			token = reader.GetToken();
 			if (token != ")") {
@@ -478,7 +469,7 @@ namespace ObjectModifications {
 				return false;
 			}
 
-			bool isValidOperation = [](ElementType elem, OperationType op) {
+			auto isValidOperation = [](ElementType elem, OperationType op) -> bool {
 				switch (elem) {
 				case ElementType::kProperties:
 					return (op == OperationType::kClear || op == OperationType::kAdd);
@@ -502,12 +493,11 @@ namespace ObjectModifications {
 				if (newOp.OpType != OperationType::kClear) {
 					ConfigData::Operation::Data opData{};
 
-					auto valueType = ParseValueType();
-					if (!valueType.has_value()) {
+					const auto valueTypeOpt = ParseValueType();
+					if (!valueTypeOpt.has_value()) {
 						return false;
 					}
-
-					opData.ValueType = valueType.value();
+					opData.ValueType = valueTypeOpt.value();
 
 					token = reader.GetToken();
 					if (token != ",") {
@@ -515,12 +505,11 @@ namespace ObjectModifications {
 						return false;
 					}
 
-					auto funcType = ParseFunctionType();
-					if (!funcType.has_value()) {
+					const auto funcTypeOpt = ParseFunctionType();
+					if (!funcTypeOpt.has_value()) {
 						return false;
 					}
-
-					opData.FunctionType = funcType.value();
+					opData.FunctionType = funcTypeOpt.value();
 
 					token = reader.GetToken();
 					if (token != ",") {
@@ -528,12 +517,11 @@ namespace ObjectModifications {
 						return false;
 					}
 
-					auto prop = ParseProperty();
-					if (!prop.has_value()) {
+					const auto propOpt = ParseProperty();
+					if (!propOpt.has_value()) {
 						return false;
 					}
-
-					opData.Property = prop.value();
+					opData.Property = propOpt.value();
 
 					token = reader.GetToken();
 					if (token != ",") {
@@ -541,7 +529,7 @@ namespace ObjectModifications {
 						return false;
 					}
 
-					bool isValidFunctionType = [](std::string_view valueType, std::string_view funcType) {
+					auto isValidFunctionType = [](std::string_view valueType, std::string_view funcType) -> bool {
 						if (valueType == "Int" || valueType == "Float") {
 							return funcType == "SET" || funcType == "ADD" || funcType == "MULADD";
 						}
@@ -563,16 +551,16 @@ namespace ObjectModifications {
 					}
 
 					if (opData.ValueType == "Int" || opData.ValueType == "Float") {
-						auto value1 = ParseNumber();
-						if (!value1.has_value()) {
+						auto parsedValueOpt = ParseNumber<float>();
+						if (!parsedValueOpt.has_value()) {
 							return false;
 						}
 
 						if (opData.ValueType == "Int") {
-							opData.Value1 = std::any(static_cast<std::uint32_t>(value1.value()));
+							opData.Value1 = std::any(static_cast<std::uint32_t>(parsedValueOpt.value()));
 						}
 						else if (opData.ValueType == "Float") {
-							opData.Value1 = std::any(value1.value());
+							opData.Value1 = std::any(parsedValueOpt.value());
 						}
 
 						token = reader.GetToken();
@@ -581,25 +569,25 @@ namespace ObjectModifications {
 							return false;
 						}
 
-						auto value2 = ParseNumber();
-						if (!value2.has_value()) {
+						parsedValueOpt = ParseNumber<float>();
+						if (!parsedValueOpt.has_value()) {
 							return false;
 						}
 
 						if (opData.ValueType == "Int") {
-							opData.Value2 = std::any(static_cast<std::uint32_t>(value2.value()));
+							opData.Value2 = std::any(static_cast<std::uint32_t>(parsedValueOpt.value()));
 						}
 						else if (opData.ValueType == "Float") {
-							opData.Value2 = std::any(value2.value());
+							opData.Value2 = std::any(parsedValueOpt.value());
 						}
 					}
 					else if (opData.ValueType == "Bool") {
-						auto value1 = ParseBool();
-						if (!value1.has_value()) {
+						auto boolOpt = ParseBool();
+						if (!boolOpt.has_value()) {
 							return false;
 						}
 
-						opData.Value1 = std::any(value1.value());
+						opData.Value1 = std::any(boolOpt.value());
 
 						token = reader.GetToken();
 						if (token != ",") {
@@ -607,28 +595,28 @@ namespace ObjectModifications {
 							return false;
 						}
 
-						auto value2 = ParseBool();
-						if (!value2.has_value()) {
+						boolOpt = ParseBool();
+						if (!boolOpt.has_value()) {
 							return false;
 						}
 
-						opData.Value2 = std::any(value2.value());
+						opData.Value2 = std::any(boolOpt.value());
 					}
 					else if (opData.ValueType == "Enum") {
-						auto value1 = ParseNumber();
-						if (!value1.has_value()) {
+						const auto parsedValueOpt = ParseNumber<float>();
+						if (!parsedValueOpt.has_value()) {
 							return false;
 						}
 
-						opData.Value1 = std::any(static_cast<std::uint32_t>(value1.value()));
+						opData.Value1 = std::any(static_cast<std::uint32_t>(parsedValueOpt.value()));
 					}
 					else if (opData.ValueType == "FormIDInt" || opData.ValueType == "FormIDFloat") {
-						auto value1 = ParseForm();
-						if (!value1.has_value()) {
+						const auto parsedFormOpt = ParseForm();
+						if (!parsedFormOpt.has_value()) {
 							return false;
 						}
 
-						opData.Value1 = std::any(value1.value());
+						opData.Value1 = std::any(parsedFormOpt.value());
 
 						if (opData.ValueType == "FormIDFloat") {
 							token = reader.GetToken();
@@ -637,12 +625,12 @@ namespace ObjectModifications {
 								return false;
 							}
 
-							auto value2 = ParseNumber();
-							if (!value2.has_value()) {
+							const auto parsedNumberOpt = ParseNumber<float>();
+							if (!parsedNumberOpt.has_value()) {
 								return false;
 							}
 
-							opData.Value2 = std::any(value2.value());
+							opData.Value2 = std::any(parsedNumberOpt.value());
 						}
 					}
 
@@ -656,7 +644,7 @@ namespace ObjectModifications {
 				return false;
 			}
 
-			a_configData.Operations.push_back(newOp);
+			a_configData.Operations.emplace_back(newOp);
 
 			return true;
 		}
@@ -725,19 +713,19 @@ namespace ObjectModifications {
 
 	void Prepare(const ConfigData& a_configData) {
 		if (a_configData.Filter == FilterType::kFormID) {
-			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+			auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
 			if (!filterForm) {
 				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
 				return;
 			}
 
-			RE::BGSMod::Attachment::Mod* oMod = filterForm->As<RE::BGSMod::Attachment::Mod>();
+			auto* oMod = filterForm->As<RE::BGSMod::Attachment::Mod>();
 			if (!oMod) {
 				logger::warn("'{}' is not a Object Modification.", a_configData.FilterForm);
 				return;
 			}
 
-			PatchData& patchData = g_patchMap[oMod];
+			auto& patchData = g_patchMap[oMod];
 
 			if (a_configData.Element == ElementType::kProperties) {
 				if (!patchData.Properties.has_value()) {
@@ -749,13 +737,12 @@ namespace ObjectModifications {
 						patchData.Properties->Clear = true;
 					}
 					else if (op.OpType == OperationType::kAdd) {
-						patchData.Properties->AddProperties.push_back({});
-						auto& prop = reinterpret_cast<RE::BGSMod::Property::Mod&>(patchData.Properties->AddProperties.back());
+						auto& prop = reinterpret_cast<RE::BGSMod::Property::Mod&>(patchData.Properties->AddProperties.emplace_back());
 
 						std::uint32_t target = 0;
 						if (oMod->targetFormType.get() == RE::ENUM_FORM_ID::kWEAP)
 						{
-							auto it = g_weaponPropertyMap.find(op.OpData->Property);
+							const auto it = g_weaponPropertyMap.find(op.OpData->Property);
 							if (it == g_weaponPropertyMap.end()) {
 								logger::warn("Invalid weapon property: '{}'.", op.OpData->Property);
 								patchData.Properties->AddProperties.pop_back();
@@ -766,7 +753,7 @@ namespace ObjectModifications {
 						}
 						else if(oMod->targetFormType.get() == RE::ENUM_FORM_ID::kARMO)
 						{
-							auto it = g_armorPropertyMap.find(op.OpData->Property);
+							const auto it = g_armorPropertyMap.find(op.OpData->Property);
 							if (it == g_armorPropertyMap.end()) {
 								logger::warn("Invalid armor property: '{}'.", op.OpData->Property);
 								patchData.Properties->AddProperties.pop_back();
@@ -776,7 +763,7 @@ namespace ObjectModifications {
 							target = it->second;
 						}
 						else if (oMod->targetFormType.get() == RE::ENUM_FORM_ID::kNPC_) {
-							auto it = g_actorPropertyMap.find(op.OpData->Property);
+							const auto it = g_actorPropertyMap.find(op.OpData->Property);
 							if (it == g_actorPropertyMap.end()) {
 								logger::warn("Invalid actor property: '{}'.", op.OpData->Property);
 								patchData.Properties->AddProperties.pop_back();
@@ -839,9 +826,9 @@ namespace ObjectModifications {
 							prop.data.mm.min.i = static_cast<std::int32_t>(std::any_cast<std::uint32_t>(op.OpData->Value1));
 						}
 						else if (op.OpData->ValueType == "FormIDInt" || op.OpData->ValueType == "FormIDFloat") {
-							std::string formSV = std::any_cast<std::string>(op.OpData->Value1);
+							const auto formSV = std::any_cast<std::string>(op.OpData->Value1);
 
-							RE::TESForm* targetForm = Utils::GetFormFromString(formSV);
+							auto* targetForm = Utils::GetFormFromString(formSV);
 							if (!targetForm) {
 								logger::warn("Invalid FormID: '{}'.", formSV);
 								patchData.Properties->AddProperties.pop_back();
@@ -880,8 +867,7 @@ namespace ObjectModifications {
 	}
 
 	void GetProperties(RE::BGSMod::Attachment::Mod* a_oMod, std::vector<PropertyContainer>& a_properties) {
-		std::uint32_t oModCount = static_cast<std::uint32_t>(a_oMod->size / sizeof(RE::BGSMod::Property::Mod));
-
+		const auto oModCount = static_cast<std::uint32_t>(a_oMod->size / sizeof(RE::BGSMod::Property::Mod));
 		if (!a_oMod->buffer || oModCount == 0) {
 			return;
 		}
@@ -892,22 +878,18 @@ namespace ObjectModifications {
 	}
 
 	void PatchProperties(RE::BGSMod::Attachment::Mod* a_oMod, const std::vector<PropertyContainer>& a_properties) {
-		RE::MemoryManager& mm = RE::MemoryManager::GetSingleton();
-
-		if (a_oMod->buffer) {
-			mm.Deallocate(a_oMod->buffer, false);
-			a_oMod->buffer = nullptr;
-		}
-
-		a_oMod->size = 0;
-
 		if (a_properties.empty()) {
+			if (a_oMod->buffer) {
+				RE::free(a_oMod->buffer);
+			}
+			a_oMod->buffer = nullptr;
+			a_oMod->size = 0;
 			return;
 		}
 
-		std::size_t allocateSize = sizeof(RE::BGSMod::Property::Mod) * a_properties.size();
+		const auto allocateSize = sizeof(RE::BGSMod::Property::Mod) * a_properties.size();
 
-		void* ptr = mm.Allocate(allocateSize + sizeof(std::size_t), 0, false);
+		auto* ptr = RE::malloc(allocateSize + sizeof(std::size_t));
 		if (!ptr) {
 			logger::critical("Failed to allocate the new Properties.");
 			return;
@@ -915,11 +897,16 @@ namespace ObjectModifications {
 
 		std::memcpy(ptr, a_properties.data(), allocateSize);
 
-		a_oMod->buffer = reinterpret_cast<std::byte*>(ptr);
+		const auto postData = (0x01000000 | allocateSize) << 32;
+		std::memcpy(static_cast<std::byte*>(ptr) + allocateSize, &postData, sizeof(postData));
+
+		auto* oldBuffer = a_oMod->buffer;
+		a_oMod->buffer = static_cast<std::byte*>(ptr);
 		a_oMod->size = static_cast<std::uint32_t>(allocateSize);
 
-		std::size_t postData = (0x01000000 | allocateSize) << 32;
-		std::memcpy(a_oMod->buffer + allocateSize, &postData, sizeof(postData));
+		if (oldBuffer) {
+			RE::free(oldBuffer);
+		}
 	}
 
 	void PatchProperties(RE::BGSMod::Attachment::Mod* a_oMod, const PatchData::PropertiesData& a_propertiesData) {
@@ -938,8 +925,8 @@ namespace ObjectModifications {
 		// Add
 		const auto& addProps = a_propertiesData.AddProperties;
 		if (!addProps.empty()) {
-			size_t originalSize = properties.size();
-			size_t addCount = addProps.size();
+			const auto originalSize = properties.size();
+			const auto addCount = addProps.size();
 			properties.resize(originalSize + addCount);
 
 			std::memcpy(properties.data() + originalSize, addProps.data(), addCount * sizeof(RE::BGSMod::Property::Mod));

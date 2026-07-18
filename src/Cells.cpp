@@ -85,7 +85,7 @@ namespace Cells {
 		}
 
 		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
-			std::string indent = std::string(a_indent * 4, ' ');
+			auto indent = std::string(a_indent * 4, ' ');
 
 			switch (a_configData.Element) {
 			case ElementType::kFullName:
@@ -111,12 +111,12 @@ namespace Cells {
 				return false;
 			}
 
-			auto filterForm = ParseForm();
-			if (!filterForm.has_value()) {
+			const auto filterFormOpt = ParseForm();
+			if (!filterFormOpt.has_value()) {
 				return false;
 			}
 
-			a_config.FilterForm = filterForm.value();
+			a_config.FilterForm = filterFormOpt.value();
 
 			token = reader.GetToken();
 			if (token != ")") {
@@ -158,7 +158,7 @@ namespace Cells {
 					return false;
 				}
 
-				a_config.AssignValue = std::string(token.substr(1, token.length() - 2));
+				a_config.AssignValue = token.substr(1, token.length() - 2);
 			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
@@ -175,13 +175,13 @@ namespace Cells {
 
 	void Prepare(const ConfigData& a_configData) {
 		if (a_configData.Filter == FilterType::kFormID) {
-			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+			auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
 			if (!filterForm) {
 				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
 				return;
 			}
 
-			RE::TESObjectCELL* cell = filterForm->As<RE::TESObjectCELL>();
+			auto* cell = filterForm->As<RE::TESObjectCELL>();
 			if (!cell) {
 				logger::warn("'{}' is not a Cell.", a_configData.FilterForm);
 				return;

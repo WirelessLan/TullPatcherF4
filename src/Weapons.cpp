@@ -148,12 +148,12 @@ namespace Weapons {
 				return false;
 			}
 
-			auto filterForm = ParseForm();
-			if (!filterForm.has_value()) {
+			const auto filterFormOpt = ParseForm();
+			if (!filterFormOpt.has_value()) {
 				return false;
 			}
 
-			a_config.FilterForm = filterForm.value();
+			a_config.FilterForm = filterFormOpt.value();
 
 			token = reader.GetToken();
 			if (token != ")") {
@@ -214,21 +214,21 @@ namespace Weapons {
 					a_config.AssignValue = std::any(std::string(reader.GetToken()));
 				}
 				else {
-					auto effectForm = ParseForm();
-					if (!effectForm.has_value()) {
+					const auto formOpt = ParseForm();
+					if (!formOpt.has_value()) {
 						return false;
 					}
-					a_config.AssignValue = std::any(effectForm.value());
+					a_config.AssignValue = std::any(formOpt.value());
 				}
 			}
 			else if (a_config.Element == ElementType::kAttackDelay || a_config.Element == ElementType::kMaxRange || a_config.Element == ElementType::kMinRange ||
 				     a_config.Element == ElementType::kReach || a_config.Element == ElementType::kReloadSpeed || a_config.Element == ElementType::kSpeed) {
-				auto floatValue = ParseNumber();
-				if (!floatValue.has_value()) {
+				const auto parsedNumberOpt = ParseNumber<float>();
+				if (!parsedNumberOpt.has_value()) {
 					return false;
 				}
 
-				a_config.AssignValue = std::any(floatValue.value());
+				a_config.AssignValue = std::any(parsedNumberOpt.value());
 			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
@@ -245,32 +245,32 @@ namespace Weapons {
 
 	void Prepare(const ConfigData& a_configData) {
 		if (a_configData.Filter == FilterType::kFormID) {
-			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+			auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
 			if (!filterForm) {
 				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
 				return;
 			}
 
-			RE::TESObjectWEAP* weap = filterForm->As<RE::TESObjectWEAP>();
+			auto* weap = filterForm->As<RE::TESObjectWEAP>();
 			if (!weap) {
 				logger::warn("'{}' is not a Weapon.", a_configData.FilterForm);
 				return;
 			}
 
 			if (a_configData.Element == ElementType::kAmmo) {
-				std::string formStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+				const auto formStr = std::any_cast<std::string>(a_configData.AssignValue.value());
 
 				if (formStr == "null") {
 					g_patchMap[weap].Ammo = nullptr;
 				}
 				else {
-					RE::TESForm* ammoForm = Utils::GetFormFromString(formStr);
+					auto* ammoForm = Utils::GetFormFromString(formStr);
 					if (!ammoForm) {
 						logger::warn("Invalid Form: '{}'.", formStr);
 						return;
 					}
 
-					RE::TESAmmo* ammo = ammoForm->As<RE::TESAmmo>();
+					auto* ammo = ammoForm->As<RE::TESAmmo>();
 					if (!ammo) {
 						logger::warn("'{}' is not an Ammo.", formStr);
 						return;
@@ -289,19 +289,19 @@ namespace Weapons {
 				g_patchMap[weap].MinRange = std::any_cast<float>(a_configData.AssignValue.value());
 			}
 			else if (a_configData.Element == ElementType::kNPCAddAmmoList) {
-				std::string formStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+				const auto formStr = std::any_cast<std::string>(a_configData.AssignValue.value());
 
 				if (formStr == "null") {
 					g_patchMap[weap].NPCAddAmmoList = nullptr;
 				}
 				else {
-					RE::TESForm* levItemForm = Utils::GetFormFromString(formStr);
+					auto* levItemForm = Utils::GetFormFromString(formStr);
 					if (!levItemForm) {
 						logger::warn("Invalid Form: '{}'.", formStr);
 						return;
 					}
 
-					RE::TESLevItem* levItem = levItemForm->As<RE::TESLevItem>();
+					auto* levItem = levItemForm->As<RE::TESLevItem>();
 					if (!levItem) {
 						logger::warn("'{}' is not a Leveled Item.", formStr);
 						return;
@@ -311,19 +311,19 @@ namespace Weapons {
 				}
 			}
 			else if (a_configData.Element == ElementType::kObjectEffect) {
-				std::string formStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+				const auto formStr = std::any_cast<std::string>(a_configData.AssignValue.value());
 
 				if (formStr == "null") {
 					g_patchMap[weap].ObjectEffect = nullptr;
 				}
 				else {
-					RE::TESForm* effectForm = Utils::GetFormFromString(formStr);
+					auto* effectForm = Utils::GetFormFromString(formStr);
 					if (!effectForm) {
 						logger::warn("Invalid Form: '{}'.", formStr);
 						return;
 					}
 
-					RE::EnchantmentItem* objectEffect = effectForm->As<RE::EnchantmentItem>();
+					auto* objectEffect = effectForm->As<RE::EnchantmentItem>();
 					if (!objectEffect) {
 						logger::warn("'{}' is not an Object Effect.", formStr);
 						return;

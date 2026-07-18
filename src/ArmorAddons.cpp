@@ -85,7 +85,7 @@ namespace ArmorAddons {
 		}
 
 		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
-			std::string indent = std::string(a_indent * 4, ' ');
+			auto indent = std::string(a_indent * 4, ' ');
 
 			switch (a_configData.Element) {
 			case ElementType::kBipedObjectSlots:
@@ -111,12 +111,12 @@ namespace ArmorAddons {
 				return false;
 			}
 
-			auto filterForm = ParseForm();
-			if (!filterForm.has_value()) {
+			const auto filterFormOpt = ParseForm();
+			if (!filterFormOpt.has_value()) {
 				return false;
 			}
 
-			a_config.FilterForm = filterForm.value();
+			a_config.FilterForm = filterFormOpt.value();
 
 			token = reader.GetToken();
 			if (token != ")") {
@@ -148,40 +148,31 @@ namespace ArmorAddons {
 			}
 
 			if (a_config.Element == ElementType::kBipedObjectSlots) {
-				std::uint32_t bipedObjectSlotsValue = 0;
+				std::uint32_t bipedSlots = 0;
 
-				auto bipedSlot = ParseBipedSlot();
-				if (!bipedSlot.has_value()) {
+				auto bipedSlotOpt = ParseBipedSlot();
+				if (!bipedSlotOpt.has_value()) {
 					return false;
 				}
 
-				if (bipedSlot.value() != 0) {
-					bipedObjectSlotsValue |= 1u << (bipedSlot.value() - 30);
+				if (bipedSlotOpt.value() != 0) {
+					bipedSlots |= 1u << (bipedSlotOpt.value() - 30);
 				}
 
-				while (true) {
-					token = reader.Peek();
-					if (token == ";") {
-						break;
-					}
+				while (reader.Peek() == "|") {
+					reader.GetToken();
 
-					token = reader.GetToken();
-					if (token != "|") {
-						logger::warn("Line {}, Col {}: Syntax error. Expected '|' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					bipedSlotOpt = ParseBipedSlot();
+					if (!bipedSlotOpt.has_value()) {
 						return false;
 					}
 
-					bipedSlot = ParseBipedSlot();
-					if (!bipedSlot.has_value()) {
-						return false;
-					}
-
-					if (bipedSlot.value() != 0) {
-						bipedObjectSlotsValue |= 1u << (bipedSlot.value() - 30);
+					if (bipedSlotOpt.value() != 0) {
+						bipedSlots |= 1u << (bipedSlotOpt.value() - 30);
 					}
 				}
 
-				a_config.AssignValue = bipedObjectSlotsValue;
+				a_config.AssignValue = bipedSlots;
 			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
@@ -198,13 +189,13 @@ namespace ArmorAddons {
 
 	void Prepare(const ConfigData& a_configData) {
 		if (a_configData.Filter == FilterType::kFormID) {
-			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+			auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
 			if (!filterForm) {
 				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
 				return;
 			}
 
-			RE::TESObjectARMA* arma = filterForm->As<RE::TESObjectARMA>();
+			auto* arma = filterForm->As<RE::TESObjectARMA>();
 			if (!arma) {
 				logger::warn("'{}' is not a ArmorAddon.", a_configData.FilterForm);
 				return;

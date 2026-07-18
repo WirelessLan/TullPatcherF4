@@ -119,34 +119,12 @@ namespace Containers {
 				if (!ParseAssignment(configData)) {
 					return std::nullopt;
 				}
-
-				token = reader.GetToken();
-				if (token != ";") {
-					logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
-					return std::nullopt;
-				}
 			}
 			else {
-				token = reader.GetToken();
-				if (token != ".") {
-					logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
-					return std::nullopt;
-				}
-
-				if (!ParseOperation(configData)) {
-					return std::nullopt;
-				}
-
-				while (true) {
-					token = reader.Peek();
-					if (token == ";") {
-						reader.GetToken();
-						break;
-					}
-
+				do {
 					token = reader.GetToken();
 					if (token != ".") {
-						logger::warn("Line {}, Col {}: Syntax error. Expected '.' or ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+						logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
 						return std::nullopt;
 					}
 
@@ -154,13 +132,20 @@ namespace Containers {
 						return std::nullopt;
 					}
 				}
+				while (reader.Peek() == ".");
+			}
+
+			token = reader.GetToken();
+			if (token != ";") {
+				logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+				return std::nullopt;
 			}
 
 			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
 		}
 
 		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
-			std::string indent = std::string(a_indent * 4, ' ');
+			auto indent = std::string(a_indent * 4, ' ');
 
 			switch (a_configData.Element) {
 			case ElementType::kFullName:
@@ -213,12 +198,12 @@ namespace Containers {
 				return false;
 			}
 
-			auto filterForm = ParseForm();
-			if (!filterForm.has_value()) {
+			const auto filterFormOpt = ParseForm();
+			if (!filterFormOpt.has_value()) {
 				return false;
 			}
 
-			a_config.FilterForm = filterForm.value();
+			a_config.FilterForm = filterFormOpt.value();
 
 			token = reader.GetToken();
 			if (token != ")") {
@@ -294,7 +279,7 @@ namespace Containers {
 				return false;
 			}
 
-			bool isValidOperation = [](ElementType elem, OperationType op) {
+			auto isValidOperation = [](ElementType elem, OperationType op) -> bool {
 				if (elem == ElementType::kItems) {
 					return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete || op == OperationType::kDeleteAll;
 				}
@@ -316,11 +301,11 @@ namespace Containers {
 				if (newOp.OpType != OperationType::kClear) {
 					ConfigData::Operation::Data opData{};
 
-					std::optional<std::string> form = ParseForm();
-					if (!form.has_value()) {
+					const auto formOpt = ParseForm();
+					if (!formOpt.has_value()) {
 						return false;
 					}
-					opData.Form = form.value();
+					opData.Form = formOpt.value();
 
 					if (newOp.OpType == OperationType::kAdd) {
 						token = reader.GetToken();
@@ -329,25 +314,12 @@ namespace Containers {
 							return false;
 						}
 
-						token = reader.GetToken();
-						if (token.empty()) {
-							logger::warn("Line {}, Col {}: Expected count.", reader.GetLastLine(), reader.GetLastLineIndex());
+						const auto valueOpt = ParseNumber<std::uint32_t>();
+						if (!valueOpt.has_value()) {
 							return false;
 						}
 
-						unsigned long parsedValue;
-						auto parseResult = std::from_chars(token.data(), token.data() + token.size(), parsedValue);
-						if (parseResult.ec != std::errc()) {
-							logger::warn("Line {}, Col {}: Failed to parse count '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-							return false;
-						}
-
-						if (parsedValue == 0 || parsedValue > static_cast<unsigned long>(UINT32_MAX)) {
-							logger::warn("Line {}, Col {}: Count '{}' is out of range.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-							return false;
-						}
-
-						opData.Count = static_cast<std::uint32_t>(parsedValue);
+						opData.Count = valueOpt.value();
 					}
 
 					newOp.OpData = opData;
@@ -360,7 +332,7 @@ namespace Containers {
 				return false;
 			}
 
-			a_configData.Operations.push_back(newOp);
+			a_configData.Operations.emplace_back(newOp);
 
 			return true;
 		}
@@ -372,19 +344,19 @@ namespace Containers {
 
 	void Prepare(const ConfigData& a_configData) {
 		if (a_configData.Filter == FilterType::kFormID) {
-			RE::TESForm* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+			auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
 			if (!filterForm) {
 				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
 				return;
 			}
 
-			RE::TESObjectCONT* container = filterForm->As<RE::TESObjectCONT>();
+			auto* container = filterForm->As<RE::TESObjectCONT>();
 			if (!container) {
 				logger::warn("'{}' is not a Container.", a_configData.FilterForm);
 				return;
 			}
 
-			PatchData& patchData = g_patchMap[container];
+			auto& patchData = g_patchMap[container];
 
 			if (a_configData.Element == ElementType::kFullName) {
 				patchData.FullName = a_configData.AssignValue.value();
@@ -399,13 +371,13 @@ namespace Containers {
 						patchData.Items->Clear = true;
 					}
 					else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kDelete || op.OpType == OperationType::kDeleteAll) {
-						RE::TESForm* opForm = Utils::GetFormFromString(op.OpData->Form);
+						auto* opForm = Utils::GetFormFromString(op.OpData->Form);
 						if (!opForm) {
 							logger::warn("Invalid Form: '{}'.", op.OpData->Form);
 							continue;
 						}
 
-						RE::TESBoundObject* boundObj = opForm->As<RE::TESBoundObject>();
+						auto* boundObj = opForm->As<RE::TESBoundObject>();
 						if (!boundObj) {
 							logger::warn("'{}' is not a valid bound object.", op.OpData->Form);
 							continue;
@@ -427,37 +399,43 @@ namespace Containers {
 	}
 
 	std::vector<PatchData::ItemsData::Item> GetContainerEntries(RE::TESObjectCONT* a_container) {
-		std::vector<PatchData::ItemsData::Item> retVec;
+		std::vector<PatchData::ItemsData::Item> entries;
 
 		if (!a_container || !a_container->containerObjects || a_container->numContainerObjects == 0) {
-			return retVec;
+			return entries;
 		}
 
-		retVec.reserve(a_container->numContainerObjects);
+		entries.reserve(a_container->numContainerObjects);
 
 		for (std::uint32_t contIndex = 0; contIndex < a_container->numContainerObjects; ++contIndex) {
-			retVec.emplace_back(PatchData::ItemsData::Item{ a_container->containerObjects[contIndex]->obj, static_cast<std::uint32_t>(a_container->containerObjects[contIndex]->count) });
+			auto& item = entries.emplace_back();
+			item.Form = a_container->containerObjects[contIndex]->obj;
+			item.Count = static_cast<std::uint32_t>(a_container->containerObjects[contIndex]->count);
 		}
 
-		return retVec;
+		return entries;
 	}
 
-	void SetItems(RE::TESObjectCONT* a_container, const std::vector<PatchData::ItemsData::Item>& a_items) {
-		// Clear existing entries
-		if (a_container->containerObjects) {
-			for (std::uint32_t contIndex = 0; contIndex < a_container->numContainerObjects; ++contIndex) {
-				RE::free(a_container->containerObjects[contIndex]);
-			}
-			RE::free(a_container->containerObjects);
-			a_container->containerObjects = nullptr;
-			a_container->numContainerObjects = 0;
-		}
-
-		if (a_items.empty()) {
+	void FreeItems(RE::ContainerObject** a_items, std::uint32_t a_count) {
+		if (!a_items) {
 			return;
 		}
 
-		// Set new entries
+		for (std::uint32_t itemIndex = 0; itemIndex < a_count; ++itemIndex) {
+			RE::free(a_items[itemIndex]);
+		}
+
+		RE::free(a_items);
+	}
+
+	void SetItems(RE::TESObjectCONT* a_container, const std::vector<PatchData::ItemsData::Item>& a_items) {
+		if (a_items.empty()) {
+			FreeItems(a_container->containerObjects, a_container->numContainerObjects);
+			a_container->containerObjects = nullptr;
+			a_container->numContainerObjects = 0;
+			return;
+		}
+
 		RE::ContainerObject** newItems = static_cast<RE::ContainerObject**>(RE::malloc(sizeof(RE::ContainerObject*) * a_items.size()));
 		if (!newItems) {
 			logger::error("Failed to allocate the ContainerObject array.");
@@ -469,14 +447,20 @@ namespace Containers {
 			RE::ContainerObject* newItem = static_cast<RE::ContainerObject*>(RE::malloc(sizeof(RE::ContainerObject)));
 			if (!newItem) {
 				logger::error("Failed to allocate a ContainerObject.");
-				continue;
+				FreeItems(newItems, actualCount);
+				return;
 			}
 
 			newItems[actualCount++] = ::new (newItem) RE::ContainerObject(entry.Form, static_cast<std::int32_t>(entry.Count));
 		}
 
+		auto** oldItems = a_container->containerObjects;
+		const auto oldItemCount = a_container->numContainerObjects;
+
 		a_container->containerObjects = newItems;
 		a_container->numContainerObjects = actualCount;
+
+		FreeItems(oldItems, oldItemCount);
 	}
 
 	void PatchItems(RE::TESObjectCONT* a_container, const PatchData::ItemsData& a_itemsData) {
