@@ -10,7 +10,7 @@ namespace Configs {
 		std::size_t GetLastLine() const;
 		std::size_t GetLastLineIndex() const;
 
-	protected:
+	private:
 		bool IsDelimiter(char ch) const;
 		void ParseTokens();
 
@@ -20,9 +20,9 @@ namespace Configs {
 			std::size_t column;
 		};
 
-		std::string _fileContents;
-		std::vector<Token> _tokens;
-		std::size_t _currentTokenIndex;
-		std::size_t _lastTokenIndex;
+		std::string fileContents_;
+		std::vector<Token> tokens_;
+		std::size_t currentTokenIndex_;
+		std::size_t lastTokenIndex_;
 	};
 }

@@ -157,10 +157,6 @@ namespace NPCs {
 
 	protected:
 		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
-			if (reader.EndOfFile() || reader.Peek().empty()) {
-				return std::nullopt;
-			}
-
 			ConfigData configData{};
 
 			if (!ParseFilter(configData)) {
@@ -455,17 +451,13 @@ namespace NPCs {
 				a_config.AssignValue = std::any(formOpt.value());
 			}
 			else if (a_config.Element == ElementType::kFullName) {
-				token = reader.GetToken();
-				if (!token.starts_with('\"')) {
-					logger::warn("Line {}, Col {}: {} must be a string.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
-					return false;
-				}
-				else if (!token.ends_with('\"')) {
-					logger::warn("Line {}, Col {}: String must end with '\"'.", reader.GetLastLine(), reader.GetLastLineIndex());
+				const auto fullNameOpt = ParseString();
+				if (!fullNameOpt.has_value())
+				{
 					return false;
 				}
 
-				a_config.AssignValue = std::any(std::string(token.substr(1, token.length() - 2)));
+				a_config.AssignValue = fullNameOpt.value();
 			}
 			else if (a_config.Element == ElementType::kHeightMax || a_config.Element == ElementType::kHeightMin ||
 				     a_config.Element == ElementType::kWeightFat || a_config.Element == ElementType::kWeightMuscular || a_config.Element == ElementType::kWeightThin) {

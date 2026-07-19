@@ -110,10 +110,6 @@ namespace Armors {
 
 	protected:
 		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
-			if (reader.EndOfFile() || reader.Peek().empty()) {
-				return std::nullopt;
-			}
-
 			ConfigData configData{};
 
 			if (!ParseFilter(configData)) {
@@ -349,18 +345,13 @@ namespace Armors {
 				a_config.AssignValue = std::any(bipedSlots);
 			}
 			else if (a_config.Element == ElementType::kFullName) {
-				token = reader.GetToken();
-				if (!token.starts_with('\"')) {
-					logger::warn("Line {}, Col {}: FullName must be a string.", reader.GetLastLine(), reader.GetLastLineIndex());
-					return false;
-				}
-				else if (!token.ends_with('\"')) {
-					logger::warn("Line {}, Col {}: String must end with '\"'.", reader.GetLastLine(), reader.GetLastLineIndex());
+				const auto fullNameOpt = ParseString();
+				if (!fullNameOpt.has_value())
+				{
 					return false;
 				}
 
-				const auto value = std::string(token.substr(1, token.length() - 2));
-				a_config.AssignValue = std::any(value);
+				a_config.AssignValue = std::any(fullNameOpt.value());
 			}
 			else if (a_config.Element == ElementType::kObjectEffect) {
 				token = reader.Peek();

@@ -253,12 +253,7 @@ namespace CombatStyles
 		CombatStyleParser(std::string_view a_configPath) : Parsers::Parser<ConfigData>(a_configPath) {}
 
 	protected:
-		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override
-		{
-			if (reader.EndOfFile() || reader.Peek().empty()) {
-				return std::nullopt;
-			}
-
+		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
 			ConfigData configData{};
 
 			if (!ParseFilter(configData)) {

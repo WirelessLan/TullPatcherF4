@@ -51,10 +51,6 @@ namespace WorldSpaces {
 
 	protected:
 		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
-			if (reader.EndOfFile() || reader.Peek().empty()) {
-				return std::nullopt;
-			}
-
 			ConfigData configData{};
 
 			if (!ParseFilter(configData)) {
@@ -148,17 +144,13 @@ namespace WorldSpaces {
 			}
 
 			if (a_config.Element == ElementType::kFullName) {
-				token = reader.GetToken();
-				if (!token.starts_with('\"')) {
-					logger::warn("Line {}, Col {}: {} must be a string.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
-					return false;
-				}
-				else if (!token.ends_with('\"')) {
-					logger::warn("Line {}, Col {}: String must end with '\"'.", reader.GetLastLine(), reader.GetLastLineIndex());
+				const auto fullNameOpt = ParseString();
+				if (!fullNameOpt.has_value())
+				{
 					return false;
 				}
 
-				a_config.AssignValue = token.substr(1, token.length() - 2);
+				a_config.AssignValue = fullNameOpt.value();
 			}
 			else {
 				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));

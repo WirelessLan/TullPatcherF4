@@ -6,8 +6,8 @@
 #include "Utils.h"
 
 namespace Parsers {
-	constexpr std::string_view PluginExistsConditionName = "IsPluginExists";
-	constexpr std::string_view FormExistsConditionName = "IsFormExists";
+	constexpr std::string_view kPluginExistsConditionName = "IsPluginExists";
+	constexpr std::string_view kFormExistsConditionName = "IsFormExists";
 
 	struct Condition {
 		enum class ConditionType {
@@ -72,12 +72,14 @@ namespace Parsers {
 		std::vector<Statement<T>> ElseStatements;
 
 		const std::vector<Statement<T>>& Evaluates() const {
-			if (EvaluateConditions(IfStatements.first)) {
+			if (EvaluateConditions(IfStatements.first))
+			{
 				return IfStatements.second;
 			}
-			
+
 			for (const auto& elseIfStatement : ElseIfStatements) {
-				if (EvaluateConditions(elseIfStatement.first)) {
+				if (EvaluateConditions(elseIfStatement.first))
+				{
 					return elseIfStatement.second;
 				}
 			}
@@ -90,32 +92,36 @@ namespace Parsers {
 	class Parser {
 	public:
 		Parser(std::string_view a_configPath) : reader(a_configPath) {}
+		virtual ~Parser() = default;
 
 		std::vector<Statement<T>> Parse() {
-			std::vector<Statement<T>> retVec;
+			std::vector<Statement<T>> statements;
 
-			while (!reader.EndOfFile()) {
-				auto parsedStatement = ParseStatement();
-				if (!parsedStatement.has_value()) {
+			while (!reader.EndOfFile())
+			{
+				const auto statementOpt = ParseStatement();
+				if (!statementOpt.has_value())
+				{
 					break;
 				}
 
-				PrintStatement(parsedStatement.value(), 0);
-
-				retVec.push_back(parsedStatement.value());
+				PrintStatement(statementOpt.value(), 0);
+				statements.emplace_back(statementOpt.value());
 			}
 
-			return retVec;
+			return statements;
 		}
 
 	protected:
 		virtual std::optional<Statement<T>> ParseExpressionStatement() = 0;
 
 		void PrintStatement(const Statement<T>& a_statement, int a_indent) {
-			if (a_statement .Type == StatementType::kExpression) {
+			if (a_statement .Type == StatementType::kExpression)
+			{
 				PrintExpressionStatement(a_statement.ExpressionStatement.value(), a_indent);
 			}
-			else if (a_statement.Type == StatementType::kConditional) {
+			else if (a_statement.Type == StatementType::kConditional)
+			{
 				PrintConditionalStatement(a_statement.ConditionalStatement.value(), a_indent);
 			}
 		}
@@ -123,30 +129,37 @@ namespace Parsers {
 		virtual void PrintExpressionStatement(const T& a_expressionStatement, int a_indent) = 0;
 
 		std::string ConditionsToString(const std::vector<ConditionToken>& a_conditions) {
-			std::string retStr;
+			std::string conditionsStr;
 
-			for (const ConditionToken& conditionToken : a_conditions) {
-				if (conditionToken.Type == ConditionToken::TokenType::kParenthesis) {
-					retStr += conditionToken.Operator.value();
-				}
-				else if (conditionToken.Type == ConditionToken::TokenType::kOperator) {
-					if (conditionToken.Operator == "!") {
-						retStr += conditionToken.Operator.value();
+			for (const ConditionToken& conditionToken : a_conditions)
+			{
+				switch (conditionToken.Type) {
+				case ConditionToken::TokenType::kParenthesis:
+					conditionsStr += conditionToken.Operator.value();
+					break;
+
+				case  ConditionToken::TokenType::kOperator:
+					if (conditionToken.Operator == "!")
+					{
+						conditionsStr += conditionToken.Operator.value();
 					}
-					else {
-						retStr += " " + conditionToken.Operator.value() + " ";
+					else
+					{
+						conditionsStr += " " + conditionToken.Operator.value() + " ";
 					}
-				}
-				else {
-					retStr += conditionToken.Condition->Name + "(" + conditionToken.Condition->Params + ")";
+					break;
+
+				default:
+					conditionsStr += conditionToken.Condition->Name + "(" + conditionToken.Condition->Params + ")";
+					break;
 				}
 			}
 
-			return retStr;
+			return conditionsStr;
 		}
 
 		void PrintConditionalStatement(const ConditionalStatement<T>& a_conditionalStatement, int a_indent) {
-			std::string indent = std::string(a_indent * 4, ' ');
+			auto indent = std::string(a_indent * 4, ' ');
 			std::string logmsg;
 
 			logmsg = "if (";
@@ -156,13 +169,15 @@ namespace Parsers {
 			logger::info("{}{}", indent, logmsg);
 			logger::info("{}{{", indent);
 
-			for (const Statement<T> statement : a_conditionalStatement.IfStatements.second) {
+			for (const auto& statement : a_conditionalStatement.IfStatements.second)
+			{
 				PrintStatement(statement, a_indent + 1);
 			}
 
 			logger::info("{}}}", indent);
 
-			for (const std::pair<std::vector<ConditionToken>, std::vector<Statement<T>>>& elseIfStatement : a_conditionalStatement.ElseIfStatements) {
+			for (const auto& elseIfStatement : a_conditionalStatement.ElseIfStatements)
+			{
 				logmsg = "else if (";
 				logmsg += ConditionsToString(elseIfStatement.first);
 				logmsg += ")";
@@ -170,20 +185,23 @@ namespace Parsers {
 				logger::info("{}{}", indent, logmsg);
 				logger::info("{}{{", indent);
 
-				for (const Statement<T> statement : elseIfStatement.second) {
+				for (const auto& statement : elseIfStatement.second)
+				{
 					PrintStatement(statement, a_indent + 1);
 				}
 
 				logger::info("{}}}", indent);
 			}
 
-			if (!a_conditionalStatement.ElseStatements.empty()) {
+			if (!a_conditionalStatement.ElseStatements.empty())
+			{
 				logmsg = "else";
 
 				logger::info("{}{}", indent, logmsg);
 				logger::info("{}{{", indent);
 
-				for (const Statement<T> statement : a_conditionalStatement.ElseStatements) {
+				for (const auto& statement : a_conditionalStatement.ElseStatements)
+				{
 					PrintStatement(statement, a_indent + 1);
 				}
 
@@ -192,291 +210,292 @@ namespace Parsers {
 		}
 
 		std::optional<Statement<T>> ParseStatement() {
-			auto token = reader.Peek();
-			if (token == "if") {
-				return ParseConditionalStatement();
-			}
-			return ParseExpressionStatement();
+			const auto token = reader.Peek();
+			return (token == "if") ? ParseConditionalStatement() : ParseExpressionStatement();
 		}
 
 		std::optional<Statement<T>> ParseConditionalStatement() {
-			if (reader.EndOfFile() || reader.Peek().empty()) {
+			if (reader.Peek().empty())
+			{
 				return std::nullopt;
 			}
 
 			ConditionalStatement<T> conditionalStatement;
 
 			auto token = reader.GetToken();
-			if (token != "if") {
+			if (token != "if")
+			{
 				logger::warn("Line {}, Col {}: Syntax error. Expected 'if'.", reader.GetLastLine(), reader.GetLastLineIndex());
 				return std::nullopt;
 			}
 
 			token = reader.GetToken();
-			if (token != "(") {
+			if (token != "(")
+			{
 				logger::warn("Line {}, Col {}: Syntax error. Expected '('.", reader.GetLastLine(), reader.GetLastLineIndex());
 				return std::nullopt;
 			}
 
-			std::vector<ConditionToken> ifConditions = ParseConditions();
-			if (ifConditions.empty()) {
+			auto ifConditions = ParseConditions();
+			if (ifConditions.empty())
+			{
 				return std::nullopt;
 			}
 
 			token = reader.GetToken();
-			if (token != ")") {
+			if (token != ")")
+			{
 				logger::warn("Line {}, Col {}: Syntax error. Expected ')'.", reader.GetLastLine(), reader.GetLastLineIndex());
 				return std::nullopt;
 			}
 
 			token = reader.GetToken();
-			if (token != "{") {
+			if (token != "{")
+			{
 				logger::warn("Line {}, Col {}: Syntax error. Expected '{{'.", reader.GetLastLine(), reader.GetLastLineIndex());
 				return std::nullopt;
 			}
 
 			std::vector<Statement<T>> ifStatements;
 
-			while (true) {
-				token = reader.Peek();
-				if (token == "}") {
-					reader.GetToken();
-					break;
-				}
-
-				std::optional<Statement<T>> parsedStatement = ParseStatement();
-				if (!parsedStatement.has_value()) {
+			while (reader.Peek() != "}")
+			{
+				const auto statementOpt = ParseStatement();
+				if (!statementOpt.has_value()) {
 					return std::nullopt;
 				}
 
-				ifStatements.push_back(parsedStatement.value());
+				ifStatements.emplace_back(statementOpt.value());
 			}
+			reader.GetToken();	// ;
 
 			conditionalStatement.IfStatements = std::make_pair(ifConditions, ifStatements);
 
-			token = reader.Peek();
-			if (token != "else") {
-				return Statement<T>::CreateConditionalStatement(conditionalStatement);
-			}
-
-			while (true) {
+			while (reader.Peek() == "else")
+			{
 				reader.GetToken();
 
 				bool isElseStatement = true;
-
 				std::vector<ConditionToken> elseIfConditions;
 				std::vector<Statement<T>> elseIfStatements;
 
 				token = reader.Peek();
-				if (token == "if") {
-					isElseStatement = false;
-
+				if (token == "if")
+				{
 					reader.GetToken();
 
+					isElseStatement = false;
+
 					token = reader.GetToken();
-					if (token != "(") {
+					if (token != "(")
+					{
 						logger::warn("Line {}, Col {}: Syntax error. Expected '('.", reader.GetLastLine(), reader.GetLastLineIndex());
 						return std::nullopt;
 					}
 
 					elseIfConditions = ParseConditions();
-					if (elseIfConditions.empty()) {
+					if (elseIfConditions.empty())
+					{
 						return std::nullopt;
 					}
 
 					token = reader.GetToken();
-					if (token != ")") {
+					if (token != ")")
+					{
 						logger::warn("Line {}, Col {}: Syntax error. Expected ')'.", reader.GetLastLine(), reader.GetLastLineIndex());
 						return std::nullopt;
 					}
 				}
 
 				token = reader.GetToken();
-				if (token != "{") {
+				if (token != "{")
+				{
 					logger::warn("Line {}, Col {}: Syntax error. Expected '{{'.", reader.GetLastLine(), reader.GetLastLineIndex());
 					return std::nullopt;
 				}
 
-				while (true) {
-					token = reader.Peek();
-					if (token == "}") {
-						reader.GetToken();
-						break;
-					}
-
-					auto parsedStatement = ParseStatement();
-					if (!parsedStatement.has_value()) {
+				while (reader.Peek() != "}")
+				{
+					const auto statementOpt = ParseStatement();
+					if (!statementOpt.has_value())
+					{
 						return std::nullopt;
 					}
 
-					elseIfStatements.push_back(parsedStatement.value());
+					elseIfStatements.emplace_back(statementOpt.value());
 				}
+				reader.GetToken();	// ;
 
-				if (!isElseStatement) {
-					conditionalStatement.ElseIfStatements.push_back(std::make_pair(elseIfConditions, elseIfStatements));
-				}
-				else {
+				if (isElseStatement)
+				{
 					conditionalStatement.ElseStatements = elseIfStatements;
 					break;
 				}
 
-				token = reader.Peek();
-				if (token != "else") {
-					break;
-				}
+				conditionalStatement.ElseIfStatements.emplace_back(std::make_pair(elseIfConditions, elseIfStatements));
 			}
 
 			return Statement<T>::CreateConditionalStatement(conditionalStatement);
 		}
 
 		std::vector<ConditionToken> ParseConditions() {
-			std::vector<ConditionToken> retVec;
+			std::vector<ConditionToken> conditions;
 
-			auto token = reader.Peek();
-			if (token == ")") {
-				logger::warn("Line {}, Col {}: Syntax error. Operand expected.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::vector<ConditionToken>{};
-			}
+			while (reader.Peek() != ")")
+			{
+				auto token = reader.GetToken();
+				if (token == "(")
+				{
+					if (!conditions.empty() && conditions.back().Type != ConditionToken::TokenType::kOperator)
+					{
+						logger::warn("Line {}, Col {}: Syntax error. Operator expected.", reader.GetLastLine(), reader.GetLastLineIndex());
+						return {};
+					}
 
-			while (true) {
-				token = reader.Peek();
-				if (token == ")") {
-					break;
-				}
-
-				token = reader.GetToken();
-				if (token == "(") {
-					retVec.push_back(ConditionToken{ ConditionToken::TokenType::kParenthesis, std::nullopt, std::string(token) });
+					conditions.emplace_back(ConditionToken{ ConditionToken::TokenType::kParenthesis, std::nullopt, std::string(token) });
 
 					auto subConditions = ParseConditions();
-					if (subConditions.empty()) {
-						return std::vector<ConditionToken>{};
+					if (subConditions.empty())
+					{
+						return {};
 					}
 
-					retVec.insert(retVec.end(), subConditions.begin(), subConditions.end());
+					conditions.insert(conditions.end(), subConditions.begin(), subConditions.end());
 
 					token = reader.GetToken();
-					if (token != ")") {
+					if (token != ")")
+					{
 						logger::warn("Line {}, Col {}: Syntax error. Expected ')'.", reader.GetLastLine(), reader.GetLastLineIndex());
-						return std::vector<ConditionToken>{};
+						return {};
 					}
 
-					retVec.push_back(ConditionToken{ ConditionToken::TokenType::kParenthesis, std::nullopt, std::string(token) });
+					conditions.emplace_back(ConditionToken{ ConditionToken::TokenType::kParenthesis, std::nullopt, std::string(token) });
 				}
-				else {
-					if (token == PluginExistsConditionName || token == FormExistsConditionName) {
-						if (!retVec.empty() && retVec.back().Type != ConditionToken::TokenType::kOperator) {
+				else
+				{
+					if (token == kPluginExistsConditionName || token == kFormExistsConditionName)
+					{
+						if (!conditions.empty() && conditions.back().Type != ConditionToken::TokenType::kOperator)
+						{
 							logger::warn("Line {}, Col {}: Syntax error. Operator expected.", reader.GetLastLine(), reader.GetLastLineIndex());
-							return std::vector<ConditionToken>{};
+							return {};
 						}
 
-						std::string conditionName = std::string(token);
+						std::string conditionName{token};
 
 						token = reader.GetToken();
-						if (token != "(") {
+						if (token != "(")
+						{
 							logger::warn("Line {}, Col {}: Syntax error. Expected '('.", reader.GetLastLine(), reader.GetLastLineIndex());
-							return std::vector<ConditionToken>{};
+							return {};
 						}
 
-						if (conditionName == PluginExistsConditionName) {
-							token = reader.GetToken();
-							if (token.empty()) {
-								logger::warn("Line {}, Col {}: Expected pluginName.", reader.GetLastLine(), reader.GetLastLineIndex());
-								return std::vector<ConditionToken>{};
+						if (conditionName == kPluginExistsConditionName)
+						{
+							const auto pluginNameOpt = ParseString();
+							if (!pluginNameOpt.has_value())
+							{
+								return {};
 							}
 
-							if (!token.starts_with('\"')) {
-								logger::warn("Line {}, Col {}: PluginName must be a string.", reader.GetLastLine(), reader.GetLastLineIndex());
-								return std::vector<ConditionToken>{};
-							}
-							else if (!token.ends_with('\"')) {
-								logger::warn("Line {}, Col {}: String must end with '\"'.", reader.GetLastLine(), reader.GetLastLineIndex());
-								return std::vector<ConditionToken>{};
-							}
-
-							std::string pluginName(token.substr(1, token.length() - 2));
-							retVec.push_back(ConditionToken{ ConditionToken::TokenType::kCondition, Condition{ Condition::ConditionType::kFunction, conditionName, pluginName }, std::nullopt });
+							conditions.emplace_back(ConditionToken{ ConditionToken::TokenType::kCondition, Condition{ Condition::ConditionType::kFunction, conditionName, pluginNameOpt.value() }, std::nullopt });
 						}
-						else if (conditionName == FormExistsConditionName) {
-							auto parsedForm = ParseForm();
-							if (!parsedForm.has_value()) {
-								return std::vector<ConditionToken>{};
+						else if (conditionName == kFormExistsConditionName)
+						{
+							const auto formOpt = ParseForm();
+							if (!formOpt.has_value()) {
+								return {};
 							}
 
-							retVec.push_back(ConditionToken{ ConditionToken::TokenType::kCondition, Condition{ Condition::ConditionType::kFunction, conditionName, parsedForm.value() }, std::nullopt });
+							conditions.push_back(ConditionToken{ ConditionToken::TokenType::kCondition, Condition{ Condition::ConditionType::kFunction, conditionName, formOpt.value() }, std::nullopt });
 						}
 
 						token = reader.GetToken();
-						if (token != ")") {
+						if (token != ")")
+						{
 							logger::warn("Line {}, Col {}: Syntax error. Expected ')'.", reader.GetLastLine(), reader.GetLastLineIndex());
-							return std::vector<ConditionToken>{};
+							return {};
 						}
 					}
-					else if (token == "&" || token == "|") {
-						std::string _operator(token);
+					else if (token == "&" || token == "|")
+					{
+						std::string operator_(token);
 
-						if (token == "&") {
+						if (token == "&")
+						{
 							token = reader.GetToken();
-							if (token != "&") {
+							if (token != "&")
+							{
 								logger::warn("Line {}, Col {}: Syntax error. Expected '&&'.", reader.GetLastLine(), reader.GetLastLineIndex());
-								return std::vector<ConditionToken>{};
+								return {};
 							}
-							_operator = "&&";
+							operator_ = "&&";
 						}
-						else if (token == "|") {
+						else if (token == "|")
+						{
 							token = reader.GetToken();
-							if (token != "|") {
+							if (token != "|")
+							{
 								logger::warn("Line {}, Col {}: Syntax error. Expected '||'.", reader.GetLastLine(), reader.GetLastLineIndex());
-								return std::vector<ConditionToken>{};
+								return {};
 							}
-							_operator = "||";
+							operator_ = "||";
 						}
 
-						if (retVec.empty() || retVec.back().Type == ConditionToken::TokenType::kOperator) {
+						if (conditions.empty() || conditions.back().Type == ConditionToken::TokenType::kOperator)
+						{
 							logger::warn("Line {}, Col {}: Syntax error. Operand expected.", reader.GetLastLine(), reader.GetLastLineIndex());
-							return std::vector<ConditionToken>{};
+							return {};
 						}
 
-						retVec.push_back(ConditionToken{ ConditionToken::TokenType::kOperator, std::nullopt, _operator });
+						conditions.emplace_back(ConditionToken{ ConditionToken::TokenType::kOperator, std::nullopt, operator_ });
 					}
-					else if (token == "!") {
-						std::string _operator(token);
+					else if (token == "!")
+					{
+						std::string operator_(token);
 
-						if (!retVec.empty() && retVec.back().Type == ConditionToken::TokenType::kOperator && retVec.back().Operator == "!") {
+						if (!conditions.empty() && conditions.back().Type == ConditionToken::TokenType::kOperator && conditions.back().Operator == "!")
+						{
 							logger::warn("Line {}, Col {}: Syntax error. Operand expected.", reader.GetLastLine(), reader.GetLastLineIndex());
-							return std::vector<ConditionToken>{};
+							return {};
 						}
-						else if ((!retVec.empty() && retVec.back().Type == ConditionToken::TokenType::kParenthesis && retVec.back().Operator == ")")
-							|| (!retVec.empty() && retVec.back().Type == ConditionToken::TokenType::kCondition)) {
+						else if ((!conditions.empty() && conditions.back().Type == ConditionToken::TokenType::kParenthesis && conditions.back().Operator == ")") ||
+						         (!conditions.empty() && conditions.back().Type == ConditionToken::TokenType::kCondition))
+						{
 							logger::warn("Line {}, Col {}: Syntax error. Operator or ')' expected.", reader.GetLastLine(), reader.GetLastLineIndex());
-							return std::vector<ConditionToken>{};
+							return {};
 						}
 
-						retVec.push_back(ConditionToken{ ConditionToken::TokenType::kOperator, std::nullopt, _operator });
+						conditions.emplace_back(ConditionToken{ ConditionToken::TokenType::kOperator, std::nullopt, operator_ });
 					}
-					else {
+					else
+					{
 						logger::warn("Line {}, Col {}: Syntax error. Unknown keyword '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-						return std::vector<ConditionToken>{};
+						return {};
 					}
 				}
 			}
 
-			if (retVec.empty() || retVec.back().Type == ConditionToken::TokenType::kOperator) {
+			if (conditions.empty() || conditions.back().Type == ConditionToken::TokenType::kOperator)
+			{
 				logger::warn("Line {}, Col {}: Syntax error. Operand expected.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::vector<ConditionToken>{};
+				return {};
 			}
 
-			return retVec;
+			return conditions;
 		}
 
 		bool IsHexString(std::string_view a_token) {
-			if (a_token.empty()) {
+			if (a_token.empty())
+			{
 				return false;
 			}
 
-			if (a_token.starts_with("0x") || a_token.starts_with("0X")) {
+			if (a_token.starts_with("0x") || a_token.starts_with("0X"))
+			{
 				a_token.remove_prefix(2);
-				if (a_token.empty()) {
+				if (a_token.empty())
+				{
 					return false;
 				}
 			}
@@ -487,26 +506,24 @@ namespace Parsers {
 		std::optional<std::string> ParseForm() {
 			std::string form;
 
-			auto token = reader.GetToken();
-			if (!token.starts_with('\"')) {
-				logger::warn("Line {}, Col {}: PluginName must be a string.", reader.GetLastLine(), reader.GetLastLineIndex());
+			const auto pluginNameOpt = ParseString();
+			if (!pluginNameOpt.has_value())
+			{
 				return std::nullopt;
 			}
-			else if (!token.ends_with('\"')) {
-				logger::warn("Line {}, Col {}: String must end with '\"'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-			form += token.substr(1, token.length() - 2);
+			form += pluginNameOpt.value();
 
-			token = reader.GetToken();
-			if (token != "|") {
+			auto token = reader.GetToken();
+			if (token != "|")
+			{
 				logger::warn("Line {}, Col {}: Syntax error. Expected '|'.", reader.GetLastLine(), reader.GetLastLineIndex());
 				return std::nullopt;
 			}
 			form += token;
 
 			token = reader.GetToken();
-			if (!IsHexString(token)) {
+			if (!IsHexString(token))
+			{
 				logger::warn("Line {}, Col {}: Expected FormID '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 				return std::nullopt;
 			}
@@ -515,22 +532,44 @@ namespace Parsers {
 			return form;
 		}
 
+		std::optional<std::string> ParseString() {
+			const auto token = reader.GetToken();
+
+			if (!token.starts_with('\"'))
+			{
+				logger::warn("Line {}, Col {}: String must start with '\"'.", reader.GetLastLine(), reader.GetLastLineIndex());
+				return std::nullopt;
+			}
+
+			if (!token.ends_with('\"'))
+			{
+				logger::warn("Line {}, Col {}: String must end with '\"'.", reader.GetLastLine(), reader.GetLastLineIndex());
+				return std::nullopt;
+			}
+
+			return std::string(token.substr(1, token.length() - 2));
+		}
+
 		template <typename T>
 		std::optional<T> ParseNumber() {
 			auto token = reader.GetToken();
-			if (token.empty()) {
+			if (token.empty())
+			{
 				logger::warn("Line {}, Col {}: Expected value.", reader.GetLastLine(), reader.GetLastLineIndex());
 				return std::nullopt;
 			}
 
 			std::string numStr{token};
-			
-			if constexpr (std::is_floating_point_v<T>) {
-				if (reader.Peek() == ".") {
+
+			if constexpr (std::is_floating_point_v<T>)
+			{
+				if (reader.Peek() == ".")
+				{
 					numStr += reader.GetToken();
 
 					token = reader.GetToken();
-					if (token.empty()) {
+					if (token.empty())
+					{
 						logger::warn("Line {}, Col {}: Expected decimal value.", reader.GetLastLine(), reader.GetLastLineIndex());
 						return std::nullopt;
 					}
@@ -540,7 +579,8 @@ namespace Parsers {
 			}
 
 			T parsedValue{};
-			if (!Utils::ConvertNumber(numStr, parsedValue)) {
+			if (!Utils::ConvertNumber(numStr, parsedValue))
+			{
 				logger::warn("Line {}, Col {}: Failed to parse value '{}'. The value must be a number", reader.GetLastLine(), reader.GetLastLineIndex(), numStr);
 				return std::nullopt;
 			}
@@ -550,12 +590,14 @@ namespace Parsers {
 
 		std::optional<std::uint32_t> ParseBipedSlot() {
 			const auto parsedValueOpt = ParseNumber<std::uint32_t>();
-			if (!parsedValueOpt.has_value()) {
+			if (!parsedValueOpt.has_value())
+			{
 				return std::nullopt;
 			}
 
 			const auto parsedValue = parsedValueOpt.value();
-			if (parsedValue != 0 && (parsedValue < 30 || parsedValue > 61)) {
+			if (parsedValue != 0 && (parsedValue < 30 || parsedValue > 61))
+			{
 				logger::warn("Line {}, Col {}: Failed to parse bipedSlot '{}'. The value is out of range", reader.GetLastLine(), reader.GetLastLineIndex(), parsedValue);
 				return std::nullopt;
 			}
@@ -568,18 +610,22 @@ namespace Parsers {
 			static constexpr std::uint32_t kMaxBipedSlotCount = 32u;
 			static constexpr std::string_view kSeparator = " | ";
 
-			if (a_bipedObjSlots == 0) {
+			if (a_bipedObjSlots == 0)
+			{
 				return "0";
 			}
-			
+
 			std::string bipedSlots;
 
-			for (std::uint32_t slotIndex = 0; slotIndex < kMaxBipedSlotCount; ++slotIndex) {
-				if ((a_bipedObjSlots & (1u << slotIndex)) == 0) {
+			for (std::uint32_t slotIndex = 0; slotIndex < kMaxBipedSlotCount; ++slotIndex)
+			{
+				if ((a_bipedObjSlots & (1u << slotIndex)) == 0)
+				{
 					continue;
 				}
 
-				if (!bipedSlots.empty()) {
+				if (!bipedSlots.empty())
+				{
 					bipedSlots += kSeparator;
 				}
 

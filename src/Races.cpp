@@ -119,10 +119,6 @@ namespace Races {
 
 	protected:
 		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
-			if (reader.EndOfFile() || reader.Peek().empty()) {
-				return std::nullopt;
-			}
-
 			ConfigData configData{};
 
 			if (!ParseFilter(configData)) {
@@ -322,17 +318,13 @@ namespace Races {
 			}
 
 			if (a_config.Element == ElementType::kMaleSkeletalModel || a_config.Element == ElementType::kFemaleSkeletalModel) {
-				token = reader.GetToken();
-				if (!token.starts_with('\"')) {
-					logger::warn("Line {}, Col {}: {} must be a string.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
-					return false;
-				}
-				else if (!token.ends_with('\"')) {
-					logger::warn("Line {}, Col {}: String must end with '\"'.", reader.GetLastLine(), reader.GetLastLineIndex());
+				const auto skeletalModelOpt = ParseString();
+				if (!skeletalModelOpt.has_value())
+				{
 					return false;
 				}
 
-				a_config.AssignValue = std::any(std::string(token.substr(1, token.length() - 2)));
+				a_config.AssignValue = std::any(skeletalModelOpt.value());
 			}
 			else if (a_config.Element == ElementType::kBodyPartData) {
 				const auto formOpt = ParseForm();

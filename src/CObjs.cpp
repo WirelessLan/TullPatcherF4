@@ -112,10 +112,6 @@ namespace CObjs {
 
 	protected:
 		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
-			if (reader.EndOfFile() || reader.Peek().empty()) {
-				return std::nullopt;
-			}
-
 			ConfigData configData{};
 
 			if (!ParseFilter(configData)) {
