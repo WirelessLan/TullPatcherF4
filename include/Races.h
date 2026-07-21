@@ -1,6 +1,7 @@
 #pragma once
 
-namespace Races {
+namespace Races
+{
 	void ReadConfigs();
 	void Patch();
-}
+}  // namespace Races

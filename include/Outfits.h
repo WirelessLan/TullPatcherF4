@@ -1,6 +1,7 @@
 #pragma once
 
-namespace Outfits {
+namespace Outfits
+{
 	void ReadConfigs();
 	void Patch();
-}
+}  // namespace Outfits

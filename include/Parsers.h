@@ -5,12 +5,15 @@
 #include "Configs.h"
 #include "Utils.h"
 
-namespace Parsers {
+namespace Parsers
+{
 	constexpr std::string_view kPluginExistsConditionName = "IsPluginExists";
 	constexpr std::string_view kFormExistsConditionName = "IsFormExists";
 
-	struct Condition {
-		enum class ConditionType {
+	struct Condition
+	{
+		enum class ConditionType
+		{
 			kFunction
 		};
 
@@ -19,8 +22,10 @@ namespace Parsers {
 		std::string Params;
 	};
 
-	struct ConditionToken {
-		enum class TokenType {
+	struct ConditionToken
+	{
+		enum class TokenType
+		{
 			kCondition,
 			kOperator,
 			kParenthesis
@@ -33,26 +38,30 @@ namespace Parsers {
 
 	bool EvaluateConditions(const std::vector<ConditionToken>& a_conditions);
 
-	enum class StatementType {
+	enum class StatementType
+	{
 		kConditional,
 		kExpression,
 		kNone,
 	};
 
-	template<typename T>
+	template <typename T>
 	class ConditionalStatement;
 
-	template<typename T>
-	class Statement {
+	template <typename T>
+	class Statement
+	{
 	public:
-		static Statement<T> CreateConditionalStatement(const ConditionalStatement<T>& a_conditionalStatement) {
+		static Statement<T> CreateConditionalStatement(const ConditionalStatement<T>& a_conditionalStatement)
+		{
 			Statement<T> retStatement;
 			retStatement.Type = StatementType::kConditional;
 			retStatement.ConditionalStatement = a_conditionalStatement;
 			return retStatement;
 		}
 
-		static Statement<T> CreateExpressionStatement(const T& a_expressionStatement) {
+		static Statement<T> CreateExpressionStatement(const T& a_expressionStatement)
+		{
 			Statement<T> retStatement;
 			retStatement.Type = StatementType::kExpression;
 			retStatement.ExpressionStatement = a_expressionStatement;
@@ -64,20 +73,23 @@ namespace Parsers {
 		std::optional<T> ExpressionStatement = std::nullopt;
 	};
 
-	template<typename T>
-	class ConditionalStatement {
+	template <typename T>
+	class ConditionalStatement
+	{
 	public:
 		std::pair<std::vector<ConditionToken>, std::vector<Statement<T>>> IfStatements;
 		std::vector<std::pair<std::vector<ConditionToken>, std::vector<Statement<T>>>> ElseIfStatements;
 		std::vector<Statement<T>> ElseStatements;
 
-		const std::vector<Statement<T>>& Evaluates() const {
+		const std::vector<Statement<T>>& Evaluates() const
+		{
 			if (EvaluateConditions(IfStatements.first))
 			{
 				return IfStatements.second;
 			}
 
-			for (const auto& elseIfStatement : ElseIfStatements) {
+			for (const auto& elseIfStatement : ElseIfStatements)
+			{
 				if (EvaluateConditions(elseIfStatement.first))
 				{
 					return elseIfStatement.second;
@@ -88,13 +100,15 @@ namespace Parsers {
 		}
 	};
 
-	template<typename T>
-	class Parser {
+	template <typename T>
+	class Parser
+	{
 	public:
 		Parser(std::string_view a_configPath) : reader(a_configPath) {}
 		virtual ~Parser() = default;
 
-		std::vector<Statement<T>> Parse() {
+		std::vector<Statement<T>> Parse()
+		{
 			std::vector<Statement<T>> statements;
 
 			while (!reader.EndOfFile())
@@ -115,8 +129,9 @@ namespace Parsers {
 	protected:
 		virtual std::optional<Statement<T>> ParseExpressionStatement() = 0;
 
-		void PrintStatement(const Statement<T>& a_statement, int a_indent) {
-			if (a_statement .Type == StatementType::kExpression)
+		void PrintStatement(const Statement<T>& a_statement, int a_indent)
+		{
+			if (a_statement.Type == StatementType::kExpression)
 			{
 				PrintExpressionStatement(a_statement.ExpressionStatement.value(), a_indent);
 			}
@@ -128,17 +143,19 @@ namespace Parsers {
 
 		virtual void PrintExpressionStatement(const T& a_expressionStatement, int a_indent) = 0;
 
-		std::string ConditionsToString(const std::vector<ConditionToken>& a_conditions) {
+		std::string ConditionsToString(const std::vector<ConditionToken>& a_conditions)
+		{
 			std::string conditionsStr;
 
 			for (const ConditionToken& conditionToken : a_conditions)
 			{
-				switch (conditionToken.Type) {
+				switch (conditionToken.Type)
+				{
 				case ConditionToken::TokenType::kParenthesis:
 					conditionsStr += conditionToken.Operator.value();
 					break;
 
-				case  ConditionToken::TokenType::kOperator:
+				case ConditionToken::TokenType::kOperator:
 					if (conditionToken.Operator == "!")
 					{
 						conditionsStr += conditionToken.Operator.value();
@@ -158,7 +175,8 @@ namespace Parsers {
 			return conditionsStr;
 		}
 
-		void PrintConditionalStatement(const ConditionalStatement<T>& a_conditionalStatement, int a_indent) {
+		void PrintConditionalStatement(const ConditionalStatement<T>& a_conditionalStatement, int a_indent)
+		{
 			auto indent = std::string(a_indent * 4, ' ');
 			std::string logmsg;
 
@@ -209,17 +227,14 @@ namespace Parsers {
 			}
 		}
 
-		std::optional<Statement<T>> ParseStatement() {
+		std::optional<Statement<T>> ParseStatement()
+		{
 			const auto token = reader.Peek();
 			return (token == "if") ? ParseConditionalStatement() : ParseExpressionStatement();
 		}
 
-		std::optional<Statement<T>> ParseConditionalStatement() {
-			if (reader.Peek().empty())
-			{
-				return std::nullopt;
-			}
-
+		std::optional<Statement<T>> ParseConditionalStatement()
+		{
 			ConditionalStatement<T> conditionalStatement;
 
 			auto token = reader.GetToken();
@@ -261,13 +276,14 @@ namespace Parsers {
 			while (reader.Peek() != "}")
 			{
 				const auto statementOpt = ParseStatement();
-				if (!statementOpt.has_value()) {
+				if (!statementOpt.has_value())
+				{
 					return std::nullopt;
 				}
 
 				ifStatements.emplace_back(statementOpt.value());
 			}
-			reader.GetToken();	// ;
+			reader.GetToken();  // ;
 
 			conditionalStatement.IfStatements = std::make_pair(ifConditions, ifStatements);
 
@@ -324,7 +340,7 @@ namespace Parsers {
 
 					elseIfStatements.emplace_back(statementOpt.value());
 				}
-				reader.GetToken();	// ;
+				reader.GetToken();  // ;
 
 				if (isElseStatement)
 				{
@@ -338,7 +354,8 @@ namespace Parsers {
 			return Statement<T>::CreateConditionalStatement(conditionalStatement);
 		}
 
-		std::vector<ConditionToken> ParseConditions() {
+		std::vector<ConditionToken> ParseConditions()
+		{
 			std::vector<ConditionToken> conditions;
 
 			while (reader.Peek() != ")")
@@ -381,7 +398,7 @@ namespace Parsers {
 							return {};
 						}
 
-						std::string conditionName{token};
+						std::string conditionName{ token };
 
 						token = reader.GetToken();
 						if (token != "(")
@@ -403,7 +420,8 @@ namespace Parsers {
 						else if (conditionName == kFormExistsConditionName)
 						{
 							const auto formOpt = ParseForm();
-							if (!formOpt.has_value()) {
+							if (!formOpt.has_value())
+							{
 								return {};
 							}
 
@@ -460,7 +478,7 @@ namespace Parsers {
 							return {};
 						}
 						else if ((!conditions.empty() && conditions.back().Type == ConditionToken::TokenType::kParenthesis && conditions.back().Operator == ")") ||
-						         (!conditions.empty() && conditions.back().Type == ConditionToken::TokenType::kCondition))
+								 (!conditions.empty() && conditions.back().Type == ConditionToken::TokenType::kCondition))
 						{
 							logger::warn("Line {}, Col {}: Syntax error. Operator or ')' expected.", reader.GetLastLine(), reader.GetLastLineIndex());
 							return {};
@@ -485,7 +503,8 @@ namespace Parsers {
 			return conditions;
 		}
 
-		bool IsHexString(std::string_view a_token) {
+		bool IsHexString(std::string_view a_token)
+		{
 			if (a_token.empty())
 			{
 				return false;
@@ -503,7 +522,8 @@ namespace Parsers {
 			return std::all_of(a_token.begin(), a_token.end(), [](unsigned char c) { return std::isxdigit(c); });
 		}
 
-		std::optional<std::string> ParseForm() {
+		std::optional<std::string> ParseForm()
+		{
 			std::string form;
 
 			const auto pluginNameOpt = ParseString();
@@ -532,7 +552,8 @@ namespace Parsers {
 			return form;
 		}
 
-		std::optional<std::string> ParseString() {
+		std::optional<std::string> ParseString()
+		{
 			const auto token = reader.GetToken();
 
 			if (!token.starts_with('\"'))
@@ -551,7 +572,8 @@ namespace Parsers {
 		}
 
 		template <typename T>
-		std::optional<T> ParseNumber() {
+		std::optional<T> ParseNumber()
+		{
 			auto token = reader.GetToken();
 			if (token.empty())
 			{
@@ -559,7 +581,7 @@ namespace Parsers {
 				return std::nullopt;
 			}
 
-			std::string numStr{token};
+			std::string numStr{ token };
 
 			if constexpr (std::is_floating_point_v<T>)
 			{
@@ -588,7 +610,8 @@ namespace Parsers {
 			return parsedValue;
 		}
 
-		std::optional<std::uint32_t> ParseBipedSlot() {
+		std::optional<std::uint32_t> ParseBipedSlot()
+		{
 			const auto parsedValueOpt = ParseNumber<std::uint32_t>();
 			if (!parsedValueOpt.has_value())
 			{
@@ -605,7 +628,8 @@ namespace Parsers {
 			return parsedValue;
 		}
 
-		std::string GetBipedSlots(std::uint32_t a_bipedObjSlots) {
+		std::string GetBipedSlots(std::uint32_t a_bipedObjSlots)
+		{
 			static constexpr std::uint32_t kBipedSlotOffset = 30u;
 			static constexpr std::uint32_t kMaxBipedSlotCount = 32u;
 			static constexpr std::string_view kSeparator = " | ";
@@ -637,4 +661,4 @@ namespace Parsers {
 
 		Configs::ConfigReader reader;
 	};
-}
+}  // namespace Parsers

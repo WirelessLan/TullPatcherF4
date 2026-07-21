@@ -1,6 +1,7 @@
 #pragma once
 
-namespace Quests {
+namespace Quests
+{
 	void ReadConfigs();
 	void Patch();
-}
+}  // namespace Quests

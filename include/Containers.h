@@ -1,6 +1,7 @@
 #pragma once
 
-namespace Containers {
+namespace Containers
+{
 	void ReadConfigs();
 	void Patch();
-}
+}  // namespace Containers

@@ -1,6 +1,7 @@
 #pragma once
 
-namespace FormLists {
+namespace FormLists
+{
 	void ReadConfigs();
 	void Patch();
-}
+}  // namespace FormLists

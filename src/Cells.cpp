@@ -6,205 +6,254 @@
 #include "Parsers.h"
 #include "Utils.h"
 
-namespace Cells {
-	constexpr std::string_view TypeName = "Cell";
+namespace Cells
+{
+	namespace
+	{
+		constexpr std::string_view kTypeName = "Cell";
 
-	enum class FilterType {
-		kFormID
-	};
+		enum class FilterType
+		{
+			kFormID
+		};
 
-	std::string_view FilterTypeToString(FilterType a_value) {
-		switch (a_value) {
-		case FilterType::kFormID: return "FilterByFormID";
-		default: return std::string_view{};
-		}
-	}
-
-	enum class ElementType {
-		kFullName
-	};
-
-	std::string_view ElementTypeToString(ElementType a_value) {
-		switch (a_value) {
-		case ElementType::kFullName: return "FullName";
-		default: return std::string_view{};
-		}
-	}
-
-	struct ConfigData {
-		FilterType Filter;
-		std::string FilterForm;
-		ElementType Element;
-		std::optional<std::string> AssignValue;
-	};
-
-	struct PatchData {
-		std::optional<std::string> FullName;
-	};
-
-	std::vector<Parsers::Statement<ConfigData>> g_configVec;
-	std::unordered_map<RE::TESObjectCELL*, PatchData> g_patchMap;
-
-	class CellParser : public Parsers::Parser<ConfigData> {
-	public:
-		CellParser(std::string_view a_configPath) : Parsers::Parser<ConfigData>(a_configPath) {}
-
-	protected:
-		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
-			ConfigData configData{};
-
-			if (!ParseFilter(configData)) {
-				return std::nullopt;
+		std::string_view FilterTypeToString(FilterType a_value)
+		{
+			switch (a_value)
+			{
+			case FilterType::kFormID:
+				return "FilterByFormID";
+			default:
+				return std::string_view{};
 			}
-
-			auto token = reader.GetToken();
-			if (token != ".") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-
-			if (!ParseElement(configData)) {
-				return std::nullopt;
-			}
-
-			if (!ParseAssignment(configData)) {
-				return std::nullopt;
-			}
-
-			token = reader.GetToken();
-			if (token != ";") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-
-			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
 		}
 
-		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
-			auto indent = std::string(a_indent * 4, ' ');
+		enum class ElementType
+		{
+			kFullName
+		};
 
-			switch (a_configData.Element) {
+		std::string_view ElementTypeToString(ElementType a_value)
+		{
+			switch (a_value)
+			{
 			case ElementType::kFullName:
-				logger::info("{}{}({}).{} = \"{}\";", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
-					ElementTypeToString(a_configData.Element), a_configData.AssignValue.value());
-				break;
+				return "FullName";
+			default:
+				return std::string_view{};
 			}
 		}
 
-		bool ParseFilter(ConfigData& a_config) {
-			auto token = reader.GetToken();
-			if (token == "FilterByFormID") {
-				a_config.Filter = FilterType::kFormID;
+		struct ConfigData
+		{
+			FilterType Filter;
+			std::string FilterForm;
+			ElementType Element;
+			std::optional<std::string> AssignValue;
+		};
+
+		struct PatchData
+		{
+			std::optional<std::string> FullName;
+		};
+
+		std::vector<Parsers::Statement<ConfigData>> g_configVec;
+		std::unordered_map<RE::TESObjectCELL*, PatchData> g_patchMap;
+
+		class CellParser : public Parsers::Parser<ConfigData>
+		{
+		public:
+			CellParser(std::string_view a_configPath) : Parsers::Parser<ConfigData>(a_configPath) {}
+
+		protected:
+			std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override
+			{
+				ConfigData configData{};
+
+				if (!ParseFilter(configData))
+				{
+					return std::nullopt;
+				}
+
+				auto token = reader.GetToken();
+				if (token != ".")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return std::nullopt;
+				}
+
+				if (!ParseElement(configData))
+				{
+					return std::nullopt;
+				}
+
+				if (!ParseAssignment(configData))
+				{
+					return std::nullopt;
+				}
+
+				token = reader.GetToken();
+				if (token != ";")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return std::nullopt;
+				}
+
+				return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
 			}
-			else {
-				logger::warn("Line {}, Col {}: Invalid FilterName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-				return false;
+
+			void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override
+			{
+				auto indent = std::string(a_indent * 4, ' ');
+
+				switch (a_configData.Element)
+				{
+				case ElementType::kFullName:
+					logger::info("{}{}({}).{} = \"{}\";", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
+						ElementTypeToString(a_configData.Element), a_configData.AssignValue.value());
+					break;
+				}
 			}
 
-			token = reader.GetToken();
-			if (token != "(") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '('.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
-			}
+			bool ParseFilter(ConfigData& a_config)
+			{
+				auto token = reader.GetToken();
+				if (token == "FilterByFormID")
+				{
+					a_config.Filter = FilterType::kFormID;
+				}
+				else
+				{
+					logger::warn("Line {}, Col {}: Invalid FilterName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					return false;
+				}
 
-			const auto filterFormOpt = ParseForm();
-			if (!filterFormOpt.has_value()) {
-				return false;
-			}
+				token = reader.GetToken();
+				if (token != "(")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected '('.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return false;
+				}
 
-			a_config.FilterForm = filterFormOpt.value();
-
-			token = reader.GetToken();
-			if (token != ")") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected ')'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
-			}
-
-			return true;
-		}
-
-		bool ParseElement(ConfigData& a_config) {
-			auto token = reader.GetToken();
-			if (token == "FullName") {
-				a_config.Element = ElementType::kFullName;
-			}
-			else {
-				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-				return false;
-			}
-
-			return true;
-		}
-
-		bool ParseAssignment(ConfigData& a_config) {
-			auto token = reader.GetToken();
-			if (token != "=") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '='.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
-			}
-
-			if (a_config.Element == ElementType::kFullName) {
-				const auto fullNameOpt = ParseString();
-				if (!fullNameOpt.has_value())
+				const auto filterFormOpt = ParseForm();
+				if (!filterFormOpt.has_value())
 				{
 					return false;
 				}
 
-				a_config.AssignValue = fullNameOpt.value();
-			}
-			else {
-				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
-				return false;
+				a_config.FilterForm = filterFormOpt.value();
+
+				token = reader.GetToken();
+				if (token != ")")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected ')'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return false;
+				}
+
+				return true;
 			}
 
-			return true;
+			bool ParseElement(ConfigData& a_config)
+			{
+				const auto token = reader.GetToken();
+				if (token == "FullName")
+				{
+					a_config.Element = ElementType::kFullName;
+				}
+				else
+				{
+					logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					return false;
+				}
+
+				return true;
+			}
+
+			bool ParseAssignment(ConfigData& a_config)
+			{
+				auto token = reader.GetToken();
+				if (token != "=")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected '='.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return false;
+				}
+
+				if (a_config.Element == ElementType::kFullName)
+				{
+					const auto fullNameOpt = ParseString();
+					if (!fullNameOpt.has_value())
+					{
+						return false;
+					}
+
+					a_config.AssignValue = fullNameOpt.value();
+				}
+				else
+				{
+					logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
+					return false;
+				}
+
+				return true;
+			}
+		};
+
+		void Prepare(const ConfigData& a_configData)
+		{
+			if (a_configData.Filter == FilterType::kFormID)
+			{
+				auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+				if (!filterForm)
+				{
+					logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
+					return;
+				}
+
+				auto* cell = filterForm->As<RE::TESObjectCELL>();
+				if (!cell)
+				{
+					logger::warn("'{}' is not a Cell.", a_configData.FilterForm);
+					return;
+				}
+
+				auto& patchData = g_patchMap[cell];
+
+				if (a_configData.Element == ElementType::kFullName)
+				{
+					patchData.FullName = a_configData.AssignValue.value();
+				}
+			}
 		}
-	};
+	}  // namespace
 
-	void ReadConfigs() {
-		g_configVec = ConfigUtils::ReadConfigs<CellParser, Parsers::Statement<ConfigData>>(TypeName);
+	void ReadConfigs()
+	{
+		g_configVec = ConfigUtils::ReadConfigs<CellParser, Parsers::Statement<ConfigData>>(kTypeName);
 	}
 
-	void Prepare(const ConfigData& a_configData) {
-		if (a_configData.Filter == FilterType::kFormID) {
-			auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
-			if (!filterForm) {
-				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
-				return;
-			}
-
-			auto* cell = filterForm->As<RE::TESObjectCELL>();
-			if (!cell) {
-				logger::warn("'{}' is not a Cell.", a_configData.FilterForm);
-				return;
-			}
-
-			if (a_configData.Element == ElementType::kFullName) {
-				g_patchMap[cell].FullName = a_configData.AssignValue.value();
-			}
-		}
-	}
-
-	void Patch() {
-		logger::info("======================== Start preparing patch for {} ========================", TypeName);
+	void Patch()
+	{
+		logger::info("======================== Start preparing patch for {} ========================", kTypeName);
 
 		ConfigUtils::Prepare(g_configVec, Prepare);
 
-		logger::info("======================== Finished preparing patch for {} ========================", TypeName);
+		logger::info("======================== Finished preparing patch for {} ========================", kTypeName);
 		logger::info("");
 
-		logger::info("======================== Start patching for {} ========================", TypeName);
+		logger::info("======================== Start patching for {} ========================", kTypeName);
 
-		for (const auto& patchData : g_patchMap) {
-			if (patchData.second.FullName.has_value()) {
-				patchData.first->fullName = patchData.second.FullName.value();
+		for (const auto& [cell, patchData] : g_patchMap)
+		{
+			if (patchData.FullName.has_value())
+			{
+				cell->fullName = patchData.FullName.value();
 			}
 		}
 
-		logger::info("======================== Finished patching for {} ========================", TypeName);
+		logger::info("======================== Finished patching for {} ========================", kTypeName);
 		logger::info("");
 
 		g_configVec.clear();
 		g_patchMap.clear();
 	}
-}
+}  // namespace Cells

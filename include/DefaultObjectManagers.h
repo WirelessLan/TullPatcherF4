@@ -1,6 +1,7 @@
 #pragma once
 
-namespace DefaultObjectManagers {
+namespace DefaultObjectManagers
+{
 	void ReadConfigs();
 	void Patch();
-}
+}  // namespace DefaultObjectManagers

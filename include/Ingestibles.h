@@ -1,6 +1,7 @@
 #pragma once
 
-namespace Ingestibles {
+namespace Ingestibles
+{
 	void ReadConfigs();
 	void Patch();
-}
+}  // namespace Ingestibles

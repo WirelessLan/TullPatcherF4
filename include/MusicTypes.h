@@ -1,6 +1,7 @@
 #pragma once
 
-namespace MusicTypes {
+namespace MusicTypes
+{
 	void ReadConfigs();
 	void Patch();
-}
+}  // namespace MusicTypes

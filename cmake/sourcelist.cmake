@@ -19,7 +19,7 @@ set(SOURCES
 	include/Quests.h
 	include/Races.h
 	include/Weapons.h
-	include/Worldspaces.h
+	include/WorldSpaces.h
 	include/Configs.h
 	include/ConfigUtils.h
 	include/Parsers.h
@@ -45,7 +45,7 @@ set(SOURCES
 	src/Quests.cpp
 	src/Races.cpp
 	src/Weapons.cpp
-	src/Worldspaces.cpp
+	src/WorldSpaces.cpp
 	src/Configs.cpp
 	src/Parsers.cpp
 	src/Utils.cpp

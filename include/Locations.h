@@ -1,6 +1,7 @@
 #pragma once
 
-namespace Locations {
+namespace Locations
+{
 	void ReadConfigs();
 	void Patch();
-}
+}  // namespace Locations

@@ -1,7 +1,9 @@
 #pragma once
 
-namespace Configs {
-	class ConfigReader {
+namespace Configs
+{
+	class ConfigReader
+	{
 	public:
 		ConfigReader(std::string_view a_path);
 		bool EndOfFile() const;
@@ -14,7 +16,8 @@ namespace Configs {
 		bool IsDelimiter(char ch) const;
 		void ParseTokens();
 
-		struct Token {
+		struct Token
+		{
 			std::string_view value;
 			std::size_t line;
 			std::size_t column;
@@ -25,4 +28,4 @@ namespace Configs {
 		std::size_t currentTokenIndex_;
 		std::size_t lastTokenIndex_;
 	};
-}
+}  // namespace Configs

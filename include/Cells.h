@@ -1,6 +1,7 @@
 #pragma once
 
-namespace Cells {
+namespace Cells
+{
 	void ReadConfigs();
 	void Patch();
-}
+}  // namespace Cells

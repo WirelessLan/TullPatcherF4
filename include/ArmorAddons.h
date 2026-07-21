@@ -1,6 +1,7 @@
 #pragma once
 
-namespace ArmorAddons {
+namespace ArmorAddons
+{
 	void ReadConfigs();
 	void Patch();
-}
+}  // namespace ArmorAddons

@@ -6,348 +6,424 @@
 #include "Parsers.h"
 #include "Utils.h"
 
-namespace Outfits {
-	constexpr std::string_view TypeName = "Outfit";
+namespace Outfits
+{
+	namespace
+	{
+		constexpr std::string_view kTypeName = "Outfit";
 
-	enum class FilterType {
-		kFormID
-	};
-
-	std::string_view FilterTypeToString(FilterType a_value) {
-		switch (a_value) {
-		case FilterType::kFormID: return "FilterByFormID";
-		default: return std::string_view{};
-		}
-	}
-
-	enum class ElementType {
-		kItems
-	};
-
-	std::string_view ElementTypeToString(ElementType a_value) {
-		switch (a_value) {
-		case ElementType::kItems: return "Items";
-		default: return std::string_view{};
-		}
-	}
-
-	enum class OperationType {
-		kClear,
-		kAdd,
-		kDelete
-	};
-
-	std::string_view OperationTypeToString(OperationType a_value) {
-		switch (a_value) {
-		case OperationType::kClear: return "Clear";
-		case OperationType::kAdd: return "Add";
-		case OperationType::kDelete: return "Delete";
-		default: return std::string_view{};
-		}
-	}
-
-	struct ConfigData {
-		struct Operation {
-			OperationType OpType;
-			std::optional<std::string> OpForm;
+		enum class FilterType
+		{
+			kFormID
 		};
 
-		FilterType Filter;
-		std::string FilterForm;
-		ElementType Element;
-		std::vector<Operation> Operations;
-	};
+		std::string_view FilterTypeToString(FilterType a_value)
+		{
+			switch (a_value)
+			{
+			case FilterType::kFormID:
+				return "FilterByFormID";
+			default:
+				return std::string_view{};
+			}
+		}
 
-	struct PatchData {
-		struct ItemsData {
-			bool Clear = false;
-			std::vector<RE::TESForm*> AddFormVec;
-			std::vector<RE::TESForm*> DeleteFormVec;
+		enum class ElementType
+		{
+			kItems
 		};
 
-		std::optional<ItemsData> Items;
-	};
-
-	std::vector<Parsers::Statement<ConfigData>> g_configVec;
-	std::unordered_map<RE::BGSOutfit*, PatchData> g_patchMap;
-
-	class OutfitParser : public Parsers::Parser<ConfigData> {
-	public:
-		OutfitParser(std::string_view a_configPath) : Parsers::Parser<ConfigData>(a_configPath) {}
-
-	protected:
-		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
-			ConfigData configData{};
-
-			if (!ParseFilter(configData)) {
-				return std::nullopt;
+		std::string_view ElementTypeToString(ElementType a_value)
+		{
+			switch (a_value)
+			{
+			case ElementType::kItems:
+				return "Items";
+			default:
+				return std::string_view{};
 			}
+		}
 
-			auto token = reader.GetToken();
-			if (token != ".") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
+		enum class OperationType
+		{
+			kClear,
+			kAdd,
+			kDelete
+		};
+
+		std::string_view OperationTypeToString(OperationType a_value)
+		{
+			switch (a_value)
+			{
+			case OperationType::kClear:
+				return "Clear";
+			case OperationType::kAdd:
+				return "Add";
+			case OperationType::kDelete:
+				return "Delete";
+			default:
+				return std::string_view{};
 			}
+		}
 
-			if (!ParseElement(configData)) {
-				return std::nullopt;
-			}
+		struct ConfigData
+		{
+			struct Operation
+			{
+				OperationType OpType;
+				std::optional<std::string> OpForm;
+			};
 
-			do {
-				token = reader.GetToken();
-				if (token != ".") {
+			FilterType Filter;
+			std::string FilterForm;
+			ElementType Element;
+			std::vector<Operation> Operations;
+		};
+
+		struct PatchData
+		{
+			struct ItemsData
+			{
+				bool Clear = false;
+				std::vector<RE::TESForm*> AddFormVec;
+				std::vector<RE::TESForm*> DeleteFormVec;
+			};
+
+			std::optional<ItemsData> Items;
+		};
+
+		std::vector<Parsers::Statement<ConfigData>> g_configVec;
+		std::unordered_map<RE::BGSOutfit*, PatchData> g_patchMap;
+
+		class OutfitParser : public Parsers::Parser<ConfigData>
+		{
+		public:
+			OutfitParser(std::string_view a_configPath) : Parsers::Parser<ConfigData>(a_configPath) {}
+
+		protected:
+			std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override
+			{
+				ConfigData configData{};
+
+				if (!ParseFilter(configData))
+				{
+					return std::nullopt;
+				}
+
+				auto token = reader.GetToken();
+				if (token != ".")
+				{
 					logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
 					return std::nullopt;
 				}
 
-				if (!ParseOperation(configData)) {
+				if (!ParseElement(configData))
+				{
 					return std::nullopt;
 				}
-			}
-			while (reader.Peek() == ".");
 
-			token = reader.GetToken();
-			if (token != ";") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-
-			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
-		}
-
-		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
-			auto indent = std::string(a_indent * 4, ' ');
-
-			switch (a_configData.Element) {
-			case ElementType::kItems:
-				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
-				for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); opIndex++) {
-					std::string opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
-						a_configData.Operations[opIndex].OpForm.has_value() ? a_configData.Operations[opIndex].OpForm.value() : "");
-
-					if (opIndex == a_configData.Operations.size() - 1) {
-						opLog += ";";
+				do
+				{
+					token = reader.GetToken();
+					if (token != ".")
+					{
+						logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
+						return std::nullopt;
 					}
 
-					logger::info("{}    {}", indent, opLog);
+					if (!ParseOperation(configData))
+					{
+						return std::nullopt;
+					}
+				} while (reader.Peek() == ".");
+
+				token = reader.GetToken();
+				if (token != ";")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return std::nullopt;
 				}
-				break;
-			}
-		}
 
-		bool ParseFilter(ConfigData& a_configData) {
-			auto token = reader.GetToken();
-			if (token == "FilterByFormID") {
-				a_configData.Filter = FilterType::kFormID;
-			}
-			else {
-				logger::warn("Line {}, Col {}: Invalid FilterName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-				return false;
+				return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
 			}
 
-			token = reader.GetToken();
-			if (token != "(") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '('.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
-			}
+			void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override
+			{
+				auto indent = std::string(a_indent * 4, ' ');
 
-			const auto filterFormOpt = ParseForm();
-			if (!filterFormOpt.has_value()) {
-				return false;
-			}
-
-			a_configData.FilterForm = filterFormOpt.value();
-
-			token = reader.GetToken();
-			if (token != ")") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected ')'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
-			}
-
-			return true;
-		}
-
-		bool ParseElement(ConfigData& a_configData) {
-			auto token = reader.GetToken();
-			if (token == "Items") {
-				a_configData.Element = ElementType::kItems;
-			}
-			else {
-				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-				return false;
-			}
-
-			return true;
-		}
-
-		bool ParseOperation(ConfigData& a_configData) {
-			ConfigData::Operation newOp{};
-
-			auto token = reader.GetToken();
-			if (token == "Clear") {
-				newOp.OpType = OperationType::kClear;
-			}
-			else if (token == "Add") {
-				newOp.OpType = OperationType::kAdd;
-			}
-			else if (token == "Delete") {
-				newOp.OpType = OperationType::kDelete;
-			}
-			else {
-				logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-				return false;
-			}
-
-			auto isValidOperation = [](ElementType elem, OperationType op) -> bool {
-				switch (elem) {
+				switch (a_configData.Element)
+				{
 				case ElementType::kItems:
-					return (op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete);
-				default:
-					return false;
-				}
-			}(a_configData.Element, newOp.OpType);
+					logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
+					for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); ++opIndex)
+					{
+						auto opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+							a_configData.Operations[opIndex].OpForm.has_value() ? a_configData.Operations[opIndex].OpForm.value() : "");
 
-			if (!isValidOperation) {
-				logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
-				return false;
-			}
-
-			token = reader.GetToken();
-			if (token != "(") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '('.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
-			}
-
-			if (a_configData.Element == ElementType::kItems) {
-				if (newOp.OpType != OperationType::kClear) {
-					const auto formOpt = ParseForm();
-					if (!formOpt.has_value()) {
-						return false;
-					}
-					newOp.OpForm = formOpt.value();
-				}
-			}
-
-			token = reader.GetToken();
-			if (token != ")") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected ')'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
-			}
-
-			a_configData.Operations.emplace_back(newOp);
-
-			return true;
-		}
-	};
-
-	void ReadConfigs() {
-		g_configVec = ConfigUtils::ReadConfigs<OutfitParser, Parsers::Statement<ConfigData>>(TypeName);
-	}
-
-	void Prepare(const ConfigData& a_configData) {
-		if (a_configData.Filter == FilterType::kFormID) {
-			auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
-			if (!filterForm) {
-				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
-				return;
-			}
-
-			auto* outfit = filterForm->As<RE::BGSOutfit>();
-			if (!outfit) {
-				logger::warn("'{}' is not a Outfit.", a_configData.FilterForm);
-				return;
-			}
-
-			auto& patchData = g_patchMap[outfit];
-
-			if (a_configData.Element == ElementType::kItems) {
-				if (!patchData.Items.has_value()) {
-					patchData.Items = PatchData::ItemsData{};
-				}
-
-				for (const auto& op : a_configData.Operations) {
-					if (op.OpType == OperationType::kClear) {
-						patchData.Items->Clear = true;
-					}
-					else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kDelete) {
-						auto* opForm = Utils::GetFormFromString(op.OpForm.value());
-						if (!opForm) {
-							logger::warn("Invalid Form: '{}'.", op.OpForm.value());
-							continue;
+						if (opIndex == a_configData.Operations.size() - 1)
+						{
+							opLog += ";";
 						}
 
-						if (opForm->formType != RE::ENUM_FORM_ID::kLVLI && opForm->formType != RE::ENUM_FORM_ID::kARMO) {
-							logger::warn("'{}' is not a Armor or a Leveled Item.", op.OpForm.value());
-							continue;
-						}
-
-						if (op.OpType == OperationType::kAdd) {
-							patchData.Items->AddFormVec.push_back(opForm);
-						}
-						else {
-							patchData.Items->DeleteFormVec.push_back(opForm);
-						}
+						logger::info("{}    {}", indent, opLog);
 					}
-				}
-			}
-		}
-	}
-
-	void PatchItems(RE::BGSOutfit* a_outfit, const PatchData::ItemsData& a_itemsData) {
-		bool isCleared = false;
-
-		// Clear
-		if (a_itemsData.Clear) {
-			a_outfit->outfitItems.clear();
-			isCleared = true;
-		}
-
-		// Delete
-		if (!isCleared && !a_itemsData.DeleteFormVec.empty()) {
-			for (const auto& delForm : a_itemsData.DeleteFormVec) {
-				for (auto it = a_outfit->outfitItems.begin(); it != a_outfit->outfitItems.end(); it++) {
-					if (*it != delForm) {
-						continue;
-					}
-
-					a_outfit->outfitItems.erase(it);
 					break;
 				}
 			}
-		}
 
-		// Add
-		if (!a_itemsData.AddFormVec.empty()) {
-			for (const auto& addForm : a_itemsData.AddFormVec) {
-				a_outfit->outfitItems.push_back(addForm);
+			bool ParseFilter(ConfigData& a_configData)
+			{
+				auto token = reader.GetToken();
+				if (token == "FilterByFormID")
+				{
+					a_configData.Filter = FilterType::kFormID;
+				}
+				else
+				{
+					logger::warn("Line {}, Col {}: Invalid FilterName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					return false;
+				}
+
+				token = reader.GetToken();
+				if (token != "(")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected '('.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return false;
+				}
+
+				const auto filterFormOpt = ParseForm();
+				if (!filterFormOpt.has_value())
+				{
+					return false;
+				}
+
+				a_configData.FilterForm = filterFormOpt.value();
+
+				token = reader.GetToken();
+				if (token != ")")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected ')'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return false;
+				}
+
+				return true;
+			}
+
+			bool ParseElement(ConfigData& a_configData)
+			{
+				const auto token = reader.GetToken();
+				if (token == "Items")
+				{
+					a_configData.Element = ElementType::kItems;
+				}
+				else
+				{
+					logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					return false;
+				}
+
+				return true;
+			}
+
+			bool ParseOperation(ConfigData& a_configData)
+			{
+				ConfigData::Operation newOp{};
+
+				auto token = reader.GetToken();
+				if (token == "Clear")
+				{
+					newOp.OpType = OperationType::kClear;
+				}
+				else if (token == "Add")
+				{
+					newOp.OpType = OperationType::kAdd;
+				}
+				else if (token == "Delete")
+				{
+					newOp.OpType = OperationType::kDelete;
+				}
+				else
+				{
+					logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					return false;
+				}
+
+				auto isValidOperation = [](ElementType elem, OperationType op) -> bool {
+					switch (elem)
+					{
+					case ElementType::kItems:
+						return (op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete);
+					default:
+						return false;
+					}
+				}(a_configData.Element, newOp.OpType);
+
+				if (!isValidOperation)
+				{
+					logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
+					return false;
+				}
+
+				token = reader.GetToken();
+				if (token != "(")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected '('.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return false;
+				}
+
+				if (a_configData.Element == ElementType::kItems)
+				{
+					if (newOp.OpType != OperationType::kClear)
+					{
+						const auto formOpt = ParseForm();
+						if (!formOpt.has_value())
+						{
+							return false;
+						}
+						newOp.OpForm = formOpt.value();
+					}
+				}
+
+				token = reader.GetToken();
+				if (token != ")")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected ')'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return false;
+				}
+
+				a_configData.Operations.emplace_back(newOp);
+
+				return true;
+			}
+		};
+
+		void Prepare(const ConfigData& a_configData)
+		{
+			if (a_configData.Filter == FilterType::kFormID)
+			{
+				auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+				if (!filterForm)
+				{
+					logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
+					return;
+				}
+
+				auto* outfit = filterForm->As<RE::BGSOutfit>();
+				if (!outfit)
+				{
+					logger::warn("'{}' is not a Outfit.", a_configData.FilterForm);
+					return;
+				}
+
+				auto& patchData = g_patchMap[outfit];
+
+				if (a_configData.Element == ElementType::kItems)
+				{
+					if (!patchData.Items.has_value())
+					{
+						patchData.Items = PatchData::ItemsData{};
+					}
+
+					for (const auto& op : a_configData.Operations)
+					{
+						if (op.OpType == OperationType::kClear)
+						{
+							patchData.Items->Clear = true;
+						}
+						else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kDelete)
+						{
+							auto* opForm = Utils::GetFormFromString(op.OpForm.value());
+							if (!opForm)
+							{
+								logger::warn("Invalid Form: '{}'.", op.OpForm.value());
+								continue;
+							}
+
+							if (opForm->formType != RE::ENUM_FORM_ID::kLVLI && opForm->formType != RE::ENUM_FORM_ID::kARMO)
+							{
+								logger::warn("'{}' is not a Armor or a Leveled Item.", op.OpForm.value());
+								continue;
+							}
+
+							if (op.OpType == OperationType::kAdd)
+							{
+								patchData.Items->AddFormVec.emplace_back(opForm);
+							}
+							else
+							{
+								patchData.Items->DeleteFormVec.emplace_back(opForm);
+							}
+						}
+					}
+				}
 			}
 		}
-	}
 
-	void Patch(RE::BGSOutfit* a_outfit, const PatchData& a_patchData) {
-		if (a_patchData.Items.has_value()) {
-			PatchItems(a_outfit, a_patchData.Items.value());
+		void PatchItems(RE::BGSOutfit* a_outfit, const PatchData::ItemsData& a_itemsData)
+		{
+			bool cleared = false;
+
+			// Clear
+			if (a_itemsData.Clear)
+			{
+				a_outfit->outfitItems.clear();
+				cleared = true;
+			}
+
+			// Delete
+			if (!cleared)
+			{
+				for (const auto& delForm : a_itemsData.DeleteFormVec)
+				{
+					for (auto it = a_outfit->outfitItems.begin(); it != a_outfit->outfitItems.end(); ++it)
+					{
+						if (*it != delForm)
+						{
+							continue;
+						}
+
+						a_outfit->outfitItems.erase(it);
+						break;
+					}
+				}
+			}
+
+			// Add
+			for (const auto& addForm : a_itemsData.AddFormVec)
+			{
+				a_outfit->outfitItems.emplace_back(addForm);
+			}
 		}
+	}  // namespace
+
+	void ReadConfigs()
+	{
+		g_configVec = ConfigUtils::ReadConfigs<OutfitParser, Parsers::Statement<ConfigData>>(kTypeName);
 	}
 
-	void Patch() {
-		logger::info("======================== Start preparing patch for {} ========================", TypeName);
+	void Patch()
+	{
+		logger::info("======================== Start preparing patch for {} ========================", kTypeName);
 
 		ConfigUtils::Prepare(g_configVec, Prepare);
 
-		logger::info("======================== Finished preparing patch for {} ========================", TypeName);
+		logger::info("======================== Finished preparing patch for {} ========================", kTypeName);
 		logger::info("");
 
-		logger::info("======================== Start patching for {} ========================", TypeName);
+		logger::info("======================== Start patching for {} ========================", kTypeName);
 
-		for (const auto& patchData : g_patchMap) {
-			Patch(patchData.first, patchData.second);
+		for (const auto& [outfit, patchData] : g_patchMap)
+		{
+			if (patchData.Items.has_value())
+			{
+				PatchItems(outfit, patchData.Items.value());
+			}
 		}
 
-		logger::info("======================== Finished patching for {} ========================", TypeName);
+		logger::info("======================== Finished patching for {} ========================", kTypeName);
 		logger::info("");
 
 		g_configVec.clear();
 		g_patchMap.clear();
 	}
-}
+}  // namespace Outfits

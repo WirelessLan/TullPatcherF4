@@ -1,7 +1,7 @@
 #pragma once
 
-namespace Keywords
+namespace WorldSpaces
 {
 	void ReadConfigs();
 	void Patch();
-}  // namespace Keywords
+}  // namespace WorldSpaces

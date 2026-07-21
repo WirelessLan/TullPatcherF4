@@ -1,697 +1,848 @@
 #include "Armors.h"
 
-#include <regex>
 #include <any>
+#include <regex>
 
 #include "ConfigUtils.h"
 #include "Parsers.h"
 #include "Utils.h"
 
-namespace Armors {
-	constexpr std::string_view TypeName = "Armor";
+namespace Armors
+{
+	namespace
+	{
+		constexpr std::string_view kTypeName = "Armor";
 
-	enum class FilterType {
-		kFormID
-	};
+		enum class FilterType
+		{
+			kFormID
+		};
 
-	std::string_view FilterTypeToString(FilterType a_value) {
-		switch (a_value) {
-		case FilterType::kFormID: return "FilterByFormID";
-		default: return std::string_view{};
+		std::string_view FilterTypeToString(FilterType a_value)
+		{
+			switch (a_value)
+			{
+			case FilterType::kFormID:
+				return "FilterByFormID";
+			default:
+				return std::string_view{};
+			}
 		}
-	}
 
-	enum class ElementType {
-		kArmorRating,
-		kBipedObjectSlots,
-		kFullName,
-		kKeywords,
-		kObjectEffect,
-		kResistances,
-	};
+		enum class ElementType
+		{
+			kArmorRating,
+			kBipedObjectSlots,
+			kFullName,
+			kKeywords,
+			kObjectEffect,
+			kResistances,
+		};
 
-	std::string_view ElementTypeToString(ElementType a_value) {
-		switch (a_value) {
-		case ElementType::kArmorRating: return "ArmorRating";
-		case ElementType::kBipedObjectSlots: return "BipedObjectSlots";
-		case ElementType::kFullName: return "FullName";
-		case ElementType::kKeywords: return "Keywords";
-		case ElementType::kObjectEffect: return "ObjectEffect";
-		case ElementType::kResistances: return "Resistances";
-		default: return std::string_view{};
+		std::string_view ElementTypeToString(ElementType a_value)
+		{
+			switch (a_value)
+			{
+			case ElementType::kArmorRating:
+				return "ArmorRating";
+			case ElementType::kBipedObjectSlots:
+				return "BipedObjectSlots";
+			case ElementType::kFullName:
+				return "FullName";
+			case ElementType::kKeywords:
+				return "Keywords";
+			case ElementType::kObjectEffect:
+				return "ObjectEffect";
+			case ElementType::kResistances:
+				return "Resistances";
+			default:
+				return std::string_view{};
+			}
 		}
-	}
 
-	enum class OperationType {
-		kClear,
-		kAdd,
-		kDelete
-	};
+		enum class OperationType
+		{
+			kClear,
+			kAdd,
+			kDelete
+		};
 
-	std::string_view OperationTypeToString(OperationType a_value) {
-		switch (a_value) {
-		case OperationType::kClear: return "Clear";
-		case OperationType::kAdd: return "Add";
-		case OperationType::kDelete: return "Delete";
-		default: return std::string_view{};
+		std::string_view OperationTypeToString(OperationType a_value)
+		{
+			switch (a_value)
+			{
+			case OperationType::kClear:
+				return "Clear";
+			case OperationType::kAdd:
+				return "Add";
+			case OperationType::kDelete:
+				return "Delete";
+			default:
+				return std::string_view{};
+			}
 		}
-	}
 
-	struct ConfigData {
-		struct Operation {
-			struct ResistanceData {
-				std::string Form;
-				std::uint32_t Value;
+		struct ConfigData
+		{
+			struct Operation
+			{
+				struct ResistanceData
+				{
+					std::string Form;
+					std::uint32_t Value;
+				};
+
+				OperationType OpType;
+				std::optional<std::any> OpData;
 			};
 
-			OperationType OpType;
-			std::optional<std::any> OpData;
+			FilterType Filter;
+			std::string FilterForm;
+			ElementType Element;
+			std::vector<Operation> Operations;
+			std::optional<std::any> AssignValue;
 		};
 
-		FilterType Filter;
-		std::string FilterForm;
-		ElementType Element;
-		std::vector<Operation> Operations;
-		std::optional<std::any> AssignValue;
-	};
-
-	struct PatchData {
-		struct KeywordsData {
-			bool Clear;
-			std::vector<RE::BGSKeyword*> AddKeywordVec;
-			std::vector<RE::BGSKeyword*> DeleteKeywordVec;
-		};
-
-		struct ResistancesData {
-			struct Resistance {
-				RE::BGSDamageType* DamageType;
-				std::uint32_t Value;
+		struct PatchData
+		{
+			struct KeywordsData
+			{
+				bool Clear;
+				std::vector<RE::BGSKeyword*> AddKeywordVec;
+				std::vector<RE::BGSKeyword*> DeleteKeywordVec;
 			};
 
-			bool Clear;
-			std::vector<Resistance> AddResistanceVec;
-			std::vector<Resistance> DeleteResistanceVec;
+			struct ResistancesData
+			{
+				struct Resistance
+				{
+					RE::BGSDamageType* DamageType;
+					std::uint32_t Value;
+				};
+
+				bool Clear;
+				std::vector<Resistance> AddResistanceVec;
+				std::vector<Resistance> DeleteResistanceVec;
+			};
+
+			std::optional<std::uint16_t> ArmorRating;
+			std::optional<std::uint32_t> BipedObjectSlots;
+			std::optional<std::string> FullName;
+			std::optional<KeywordsData> Keywords;
+			std::optional<RE::EnchantmentItem*> ObjectEffect;
+			std::optional<ResistancesData> Resistances;
 		};
 
-		std::optional<std::uint16_t> ArmorRating;
-		std::optional<std::uint32_t> BipedObjectSlots;
-		std::optional<std::string> FullName;
-		std::optional<KeywordsData> Keywords;
-		std::optional<RE::EnchantmentItem*> ObjectEffect;
-		std::optional<ResistancesData> Resistances;
-	};
+		std::vector<Parsers::Statement<ConfigData>> g_configVec;
+		std::unordered_map<RE::TESObjectARMO*, PatchData> g_patchMap;
 
-	std::vector<Parsers::Statement<ConfigData>> g_configVec;
-	std::unordered_map<RE::TESObjectARMO*, PatchData> g_patchMap;
+		class ArmorParser : public Parsers::Parser<ConfigData>
+		{
+		public:
+			ArmorParser(std::string_view a_configPath) : Parsers::Parser<ConfigData>(a_configPath) {}
 
-	class ArmorParser : public Parsers::Parser<ConfigData> {
-	public:
-		ArmorParser(std::string_view a_configPath) : Parsers::Parser<ConfigData>(a_configPath) {}
+		protected:
+			std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override
+			{
+				ConfigData configData{};
 
-	protected:
-		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
-			ConfigData configData{};
-
-			if (!ParseFilter(configData)) {
-				return std::nullopt;
-			}
-
-			auto token = reader.GetToken();
-			if (token != ".") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-
-			if (!ParseElement(configData)) {
-				return std::nullopt;
-			}
-
-			token = reader.Peek();
-			if (token == "=") {
-				if (!ParseAssignment(configData)) {
+				if (!ParseFilter(configData))
+				{
 					return std::nullopt;
 				}
-			}
-			else {
-				token = reader.GetToken();
-				if (token != ".") {
+
+				auto token = reader.GetToken();
+				if (token != ".")
+				{
 					logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
 					return std::nullopt;
 				}
 
-				if (!ParseOperation(configData)) {
+				if (!ParseElement(configData))
+				{
 					return std::nullopt;
 				}
 
-				while (reader.Peek() == ".") {
-					reader.GetToken();
-
-					if (!ParseOperation(configData)) {
+				token = reader.Peek();
+				if (token == "=")
+				{
+					if (!ParseAssignment(configData))
+					{
 						return std::nullopt;
 					}
 				}
-			}
+				else
+				{
+					do
+					{
+						token = reader.GetToken();
+						if (token != ".")
+						{
+							logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
+							return std::nullopt;
+						}
 
-			token = reader.GetToken();
-			if (token != ";") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-
-			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
-		}
-
-		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
-			auto indent = std::string(a_indent * 4, ' ');
-
-			switch (a_configData.Element) {
-			case ElementType::kArmorRating:
-				logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
-					ElementTypeToString(a_configData.Element), std::any_cast<std::uint16_t>(a_configData.AssignValue.value()));
-				break;
-
-			case ElementType::kBipedObjectSlots:
-				logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
-					ElementTypeToString(a_configData.Element), GetBipedSlots(std::any_cast<std::uint32_t>(a_configData.AssignValue.value())));
-				break;
-
-			case ElementType::kFullName:
-				logger::info("{}{}({}).{} = \"{}\";", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
-					ElementTypeToString(a_configData.Element), std::any_cast<std::string>(a_configData.AssignValue.value()));
-				break;
-
-			case ElementType::kKeywords:
-				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
-				for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); opIndex++) {
-					std::string opLog;
-
-					switch (a_configData.Operations[opIndex].OpType) {
-					case OperationType::kClear:
-						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[opIndex].OpType));
-						break;
-
-					case OperationType::kAdd:
-					case OperationType::kDelete:
-						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
-							std::any_cast<std::string>(a_configData.Operations[opIndex].OpData.value()));
-						break;
-					}
-
-					if (opIndex == a_configData.Operations.size() - 1) {
-						opLog += ";";
-					}
-
-					logger::info("{}    {}", indent, opLog);
+						if (!ParseOperation(configData))
+						{
+							return std::nullopt;
+						}
+					} while (reader.Peek() == ".");
 				}
-				break;
 
-			case ElementType::kObjectEffect:
-				logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
-					ElementTypeToString(a_configData.Element), std::any_cast<std::string>(a_configData.AssignValue.value()));
-				break;
-
-			case ElementType::kResistances:
-				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
-				for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); opIndex++) {
-					std::string opLog;
-
-					switch (a_configData.Operations[opIndex].OpType) {
-					case OperationType::kClear:
-						opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[opIndex].OpType));
-						break;
-
-					case OperationType::kAdd:
-						opLog = fmt::format(".{}({}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
-							std::any_cast<ConfigData::Operation::ResistanceData>(a_configData.Operations[opIndex].OpData.value()).Form,
-							std::any_cast<ConfigData::Operation::ResistanceData>(a_configData.Operations[opIndex].OpData.value()).Value);
-						break;
-
-					case OperationType::kDelete:
-						opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
-							std::any_cast<ConfigData::Operation::ResistanceData>(a_configData.Operations[opIndex].OpData.value()).Form);
-						break;
-					}
-
-					if (opIndex == a_configData.Operations.size() - 1) {
-						opLog += ";";
-					}
-
-					logger::info("{}    {}", indent, opLog);
+				token = reader.GetToken();
+				if (token != ";")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return std::nullopt;
 				}
-				break;
-			}
-		}
 
-		bool ParseFilter(ConfigData& a_config) {
-			auto token = reader.GetToken();
-			if (token == "FilterByFormID") {
-				a_config.Filter = FilterType::kFormID;
-			}
-			else {
-				logger::warn("Line {}, Col {}: Invalid FilterName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-				return false;
+				return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
 			}
 
-			token = reader.GetToken();
-			if (token != "(") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '('.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
+			void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override
+			{
+				auto indent = std::string(a_indent * 4, ' ');
+
+				switch (a_configData.Element)
+				{
+				case ElementType::kArmorRating:
+					logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
+						ElementTypeToString(a_configData.Element), std::any_cast<std::uint16_t>(a_configData.AssignValue.value()));
+					break;
+
+				case ElementType::kBipedObjectSlots:
+					logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
+						ElementTypeToString(a_configData.Element), GetBipedSlots(std::any_cast<std::uint32_t>(a_configData.AssignValue.value())));
+					break;
+
+				case ElementType::kFullName:
+					logger::info("{}{}({}).{} = \"{}\";", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
+						ElementTypeToString(a_configData.Element), std::any_cast<std::string>(a_configData.AssignValue.value()));
+					break;
+
+				case ElementType::kKeywords:
+					logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
+					for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); ++opIndex)
+					{
+						std::string opLog;
+
+						switch (a_configData.Operations[opIndex].OpType)
+						{
+						case OperationType::kClear:
+							opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[opIndex].OpType));
+							break;
+
+						case OperationType::kAdd:
+						case OperationType::kDelete:
+							opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+								std::any_cast<std::string>(a_configData.Operations[opIndex].OpData.value()));
+							break;
+						}
+
+						if (opIndex == a_configData.Operations.size() - 1)
+						{
+							opLog += ";";
+						}
+
+						logger::info("{}    {}", indent, opLog);
+					}
+					break;
+
+				case ElementType::kObjectEffect:
+					logger::info("{}{}({}).{} = {};", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
+						ElementTypeToString(a_configData.Element), std::any_cast<std::string>(a_configData.AssignValue.value()));
+					break;
+
+				case ElementType::kResistances:
+					logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
+					for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); ++opIndex)
+					{
+						std::string opLog;
+
+						switch (a_configData.Operations[opIndex].OpType)
+						{
+						case OperationType::kClear:
+							opLog = fmt::format(".{}()", OperationTypeToString(a_configData.Operations[opIndex].OpType));
+							break;
+
+						case OperationType::kAdd:
+							opLog = fmt::format(".{}({}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+								std::any_cast<ConfigData::Operation::ResistanceData>(a_configData.Operations[opIndex].OpData.value()).Form,
+								std::any_cast<ConfigData::Operation::ResistanceData>(a_configData.Operations[opIndex].OpData.value()).Value);
+							break;
+
+						case OperationType::kDelete:
+							opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+								std::any_cast<ConfigData::Operation::ResistanceData>(a_configData.Operations[opIndex].OpData.value()).Form);
+							break;
+						}
+
+						if (opIndex == a_configData.Operations.size() - 1)
+						{
+							opLog += ";";
+						}
+
+						logger::info("{}    {}", indent, opLog);
+					}
+					break;
+				}
 			}
 
-			const auto filterFormOpt = ParseForm();
-			if (!filterFormOpt.has_value()) {
-				return false;
-			}
-
-			a_config.FilterForm = filterFormOpt.value();
-
-			token = reader.GetToken();
-			if (token != ")") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected ')'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
-			}
-
-			return true;
-		}
-
-		bool ParseElement(ConfigData& a_config) {
-			auto token = reader.GetToken();
-			if (token == "ArmorRating") {
-				a_config.Element = ElementType::kArmorRating;
-			}
-			else if (token == "BipedObjectSlots") {
-				a_config.Element = ElementType::kBipedObjectSlots;
-			}
-			else if (token == "FullName") {
-				a_config.Element = ElementType::kFullName;
-			}
-			else if (token == "Keywords") {
-				a_config.Element = ElementType::kKeywords;
-			}
-			else if (token == "ObjectEffect") {
-				a_config.Element = ElementType::kObjectEffect;
-			}
-			else if (token == "Resistances") {
-				a_config.Element = ElementType::kResistances;
-			}
-			else {
-				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-				return false;
-			}
-
-			return true;
-		}
-
-		bool ParseAssignment(ConfigData& a_config) {
-			auto token = reader.GetToken();
-			if (token != "=") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '='.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
-			}
-
-			if (a_config.Element == ElementType::kArmorRating) {
-				const auto valueOpt = ParseNumber<std::uint16_t>();
-				if (!valueOpt.has_value()) {
+			bool ParseFilter(ConfigData& a_config)
+			{
+				auto token = reader.GetToken();
+				if (token == "FilterByFormID")
+				{
+					a_config.Filter = FilterType::kFormID;
+				}
+				else
+				{
+					logger::warn("Line {}, Col {}: Invalid FilterName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
 					return false;
 				}
 
-				a_config.AssignValue = std::any(valueOpt.value());
-			}
-			else if (a_config.Element == ElementType::kBipedObjectSlots) {
-				std::uint32_t bipedSlots = 0;
-
-				auto bipedSlotOpt = ParseBipedSlot();
-				if (!bipedSlotOpt.has_value()) {
+				token = reader.GetToken();
+				if (token != "(")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected '('.", reader.GetLastLine(), reader.GetLastLineIndex());
 					return false;
 				}
 
-				if (bipedSlotOpt.value() != 0) {
-					bipedSlots |= 1u << (bipedSlotOpt.value() - 30);
-				}
-
-				while (reader.Peek() == "|") {
-					reader.GetToken();
-
-					bipedSlotOpt = ParseBipedSlot();
-					if (!bipedSlotOpt.has_value()) {
-						return false;
-					}
-
-					if (bipedSlotOpt.value() != 0) {					
-						bipedSlots |= 1u << (bipedSlotOpt.value() - 30);
-					}
-				}
-
-				a_config.AssignValue = std::any(bipedSlots);
-			}
-			else if (a_config.Element == ElementType::kFullName) {
-				const auto fullNameOpt = ParseString();
-				if (!fullNameOpt.has_value())
+				const auto filterFormOpt = ParseForm();
+				if (!filterFormOpt.has_value())
 				{
 					return false;
 				}
 
-				a_config.AssignValue = std::any(fullNameOpt.value());
-			}
-			else if (a_config.Element == ElementType::kObjectEffect) {
-				token = reader.Peek();
-				if (token == "null") {
-					a_config.AssignValue = std::any(std::string(reader.GetToken()));
-					return true;
-				}
+				a_config.FilterForm = filterFormOpt.value();
 
-				const auto effectFormOpt = ParseForm();
-				if (!effectFormOpt.has_value()) {
+				token = reader.GetToken();
+				if (token != ")")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected ')'.", reader.GetLastLine(), reader.GetLastLineIndex());
 					return false;
 				}
 
-				a_config.AssignValue = std::any(std::string(effectFormOpt.value()));
-			}
-			else {
-				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
-				return false;
+				return true;
 			}
 
-			return true;
-		}
-
-		bool ParseOperation(ConfigData& a_configData) {
-			ConfigData::Operation newOp{};
-
-			auto token = reader.GetToken();
-			if (token == "Clear") {
-				newOp.OpType = OperationType::kClear;
-			}
-			else if (token == "Add") {
-				newOp.OpType = OperationType::kAdd;
-			}
-			else if (token == "Delete") {
-				newOp.OpType = OperationType::kDelete;
-			}
-			else {
-				logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-				return false;
-			}
-
-			auto isValidOperation = [](ElementType elem, OperationType op) -> bool {
-				if (elem == ElementType::kKeywords) {
-					return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete;
+			bool ParseElement(ConfigData& a_config)
+			{
+				const auto token = reader.GetToken();
+				if (token == "ArmorRating")
+				{
+					a_config.Element = ElementType::kArmorRating;
 				}
-				else if (elem == ElementType::kResistances) {
-					return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete;
+				else if (token == "BipedObjectSlots")
+				{
+					a_config.Element = ElementType::kBipedObjectSlots;
 				}
-				return false;
-			}(a_configData.Element, newOp.OpType);
+				else if (token == "FullName")
+				{
+					a_config.Element = ElementType::kFullName;
+				}
+				else if (token == "Keywords")
+				{
+					a_config.Element = ElementType::kKeywords;
+				}
+				else if (token == "ObjectEffect")
+				{
+					a_config.Element = ElementType::kObjectEffect;
+				}
+				else if (token == "Resistances")
+				{
+					a_config.Element = ElementType::kResistances;
+				}
+				else
+				{
+					logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					return false;
+				}
 
-			if (!isValidOperation) {
-				logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
-				return false;
+				return true;
 			}
 
-			token = reader.GetToken();
-			if (token != "(") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '('.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
-			}
+			bool ParseAssignment(ConfigData& a_config)
+			{
+				auto token = reader.GetToken();
+				if (token != "=")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected '='.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return false;
+				}
 
-			switch (a_configData.Element) {
-			case ElementType::kKeywords:
-				if (newOp.OpType != OperationType::kClear) {
-					const auto formOpt = ParseForm();
-					if (!formOpt.has_value()) {
+				if (a_config.Element == ElementType::kArmorRating)
+				{
+					const auto valueOpt = ParseNumber<std::uint16_t>();
+					if (!valueOpt.has_value())
+					{
 						return false;
 					}
-					
-					newOp.OpData = std::any(formOpt.value());
+
+					a_config.AssignValue = std::any(valueOpt.value());
 				}
-				break;
+				else if (a_config.Element == ElementType::kBipedObjectSlots)
+				{
+					std::uint32_t bipedSlots = 0;
 
-			case ElementType::kResistances:
-				if (newOp.OpType != OperationType::kClear) {
-					ConfigData::Operation::ResistanceData resistanceData{};
-
-					const auto formOpt = ParseForm();
-					if (!formOpt.has_value()) {
+					auto bipedSlotOpt = ParseBipedSlot();
+					if (!bipedSlotOpt.has_value())
+					{
 						return false;
 					}
-					resistanceData.Form = formOpt.value();
 
-					if (newOp.OpType == OperationType::kAdd) {
-						token = reader.GetToken();
-						if (token != ",") {
-							logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
+					if (bipedSlotOpt.value() != 0)
+					{
+						bipedSlots |= 1u << (bipedSlotOpt.value() - 30);
+					}
+
+					while (reader.Peek() == "|")
+					{
+						reader.GetToken();
+
+						bipedSlotOpt = ParseBipedSlot();
+						if (!bipedSlotOpt.has_value())
+						{
 							return false;
 						}
 
-						const auto valueOpt = ParseNumber<std::uint32_t>();
-						if (!valueOpt.has_value()) {
+						if (bipedSlotOpt.value() != 0)
+						{
+							bipedSlots |= 1u << (bipedSlotOpt.value() - 30);
+						}
+					}
+
+					a_config.AssignValue = std::any(bipedSlots);
+				}
+				else if (a_config.Element == ElementType::kFullName)
+				{
+					const auto fullNameOpt = ParseString();
+					if (!fullNameOpt.has_value())
+					{
+						return false;
+					}
+
+					a_config.AssignValue = std::any(fullNameOpt.value());
+				}
+				else if (a_config.Element == ElementType::kObjectEffect)
+				{
+					token = reader.Peek();
+					if (token == "null")
+					{
+						a_config.AssignValue = std::any(std::string(reader.GetToken()));
+						return true;
+					}
+
+					const auto effectFormOpt = ParseForm();
+					if (!effectFormOpt.has_value())
+					{
+						return false;
+					}
+
+					a_config.AssignValue = std::any(effectFormOpt.value());
+				}
+				else
+				{
+					logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
+					return false;
+				}
+
+				return true;
+			}
+
+			bool ParseOperation(ConfigData& a_configData)
+			{
+				ConfigData::Operation newOp{};
+
+				auto token = reader.GetToken();
+				if (token == "Clear")
+				{
+					newOp.OpType = OperationType::kClear;
+				}
+				else if (token == "Add")
+				{
+					newOp.OpType = OperationType::kAdd;
+				}
+				else if (token == "Delete")
+				{
+					newOp.OpType = OperationType::kDelete;
+				}
+				else
+				{
+					logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					return false;
+				}
+
+				auto isValidOperation = [](ElementType elem, OperationType op) -> bool {
+					if (elem == ElementType::kKeywords)
+					{
+						return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete;
+					}
+					else if (elem == ElementType::kResistances)
+					{
+						return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete;
+					}
+					return false;
+				}(a_configData.Element, newOp.OpType);
+
+				if (!isValidOperation)
+				{
+					logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
+					return false;
+				}
+
+				token = reader.GetToken();
+				if (token != "(")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected '('.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return false;
+				}
+
+				switch (a_configData.Element)
+				{
+				case ElementType::kKeywords:
+					if (newOp.OpType != OperationType::kClear)
+					{
+						const auto formOpt = ParseForm();
+						if (!formOpt.has_value())
+						{
 							return false;
 						}
-						resistanceData.Value = valueOpt.value();
+
+						newOp.OpData = std::any(formOpt.value());
 					}
+					break;
 
-					newOp.OpData = std::any(resistanceData);
-				}
-				break;
-			}
+				case ElementType::kResistances:
+					if (newOp.OpType != OperationType::kClear)
+					{
+						ConfigData::Operation::ResistanceData resistanceData{};
 
-			token = reader.GetToken();
-			if (token != ")") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected ')'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
-			}
+						const auto formOpt = ParseForm();
+						if (!formOpt.has_value())
+						{
+							return false;
+						}
+						resistanceData.Form = formOpt.value();
 
-			a_configData.Operations.emplace_back(newOp);
+						if (newOp.OpType == OperationType::kAdd)
+						{
+							token = reader.GetToken();
+							if (token != ",")
+							{
+								logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
+								return false;
+							}
 
-			return true;
-		}
-	};
+							const auto valueOpt = ParseNumber<std::uint32_t>();
+							if (!valueOpt.has_value())
+							{
+								return false;
+							}
+							resistanceData.Value = valueOpt.value();
+						}
 
-	void ReadConfigs() {
-		g_configVec = ConfigUtils::ReadConfigs<ArmorParser, Parsers::Statement<ConfigData>>(TypeName);
-	}
-
-	void Prepare(const ConfigData& a_configData) {
-		if (a_configData.Filter == FilterType::kFormID) {
-			auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
-			if (!filterForm) {
-				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
-				return;
-			}
-
-			auto* armo = filterForm->As<RE::TESObjectARMO>();
-			if (!armo) {
-				logger::warn("'{}' is not a Armor.", a_configData.FilterForm);
-				return;
-			}
-
-			if (a_configData.Element == ElementType::kArmorRating) {
-				g_patchMap[armo].ArmorRating = std::any_cast<std::uint16_t>(a_configData.AssignValue.value());
-			} 
-			else if (a_configData.Element == ElementType::kBipedObjectSlots) {
-				g_patchMap[armo].BipedObjectSlots = std::any_cast<std::uint32_t>(a_configData.AssignValue.value());
-			}
-			else if (a_configData.Element == ElementType::kFullName) {
-				g_patchMap[armo].FullName = std::any_cast<std::string>(a_configData.AssignValue.value());
-			}
-			else if (a_configData.Element == ElementType::kKeywords) {
-				if (!g_patchMap[armo].Keywords.has_value()) {
-					g_patchMap[armo].Keywords = PatchData::KeywordsData{};
+						newOp.OpData = std::any(resistanceData);
+					}
+					break;
 				}
 
-				for (const auto& operation : a_configData.Operations) {
-					if (operation.OpType == OperationType::kClear) {
-						g_patchMap[armo].Keywords->Clear = true;
-					}
-					else if (operation.OpType == OperationType::kAdd || operation.OpType == OperationType::kDelete) {
-						const auto keywordFormStr = std::any_cast<std::string>(operation.OpData.value());
+				token = reader.GetToken();
+				if (token != ")")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected ')'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return false;
+				}
 
-						auto* keywordForm = Utils::GetFormFromString(keywordFormStr);
-						if (!keywordForm) {
-							logger::warn("Invalid Form: '{}'.", keywordFormStr);
+				a_configData.Operations.emplace_back(newOp);
+
+				return true;
+			}
+		};
+
+		void Prepare(const ConfigData& a_configData)
+		{
+			if (a_configData.Filter == FilterType::kFormID)
+			{
+				auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+				if (!filterForm)
+				{
+					logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
+					return;
+				}
+
+				auto* armo = filterForm->As<RE::TESObjectARMO>();
+				if (!armo)
+				{
+					logger::warn("'{}' is not a Armor.", a_configData.FilterForm);
+					return;
+				}
+
+				auto& patchData = g_patchMap[armo];
+
+				if (a_configData.Element == ElementType::kArmorRating)
+				{
+					patchData.ArmorRating = std::any_cast<std::uint16_t>(a_configData.AssignValue.value());
+				}
+				else if (a_configData.Element == ElementType::kBipedObjectSlots)
+				{
+					patchData.BipedObjectSlots = std::any_cast<std::uint32_t>(a_configData.AssignValue.value());
+				}
+				else if (a_configData.Element == ElementType::kFullName)
+				{
+					patchData.FullName = std::any_cast<std::string>(a_configData.AssignValue.value());
+				}
+				else if (a_configData.Element == ElementType::kKeywords)
+				{
+					if (!patchData.Keywords.has_value())
+					{
+						patchData.Keywords = PatchData::KeywordsData{};
+					}
+
+					for (const auto& operation : a_configData.Operations)
+					{
+						if (operation.OpType == OperationType::kClear)
+						{
+							patchData.Keywords->Clear = true;
+						}
+						else if (operation.OpType == OperationType::kAdd || operation.OpType == OperationType::kDelete)
+						{
+							const auto keywordFormStr = std::any_cast<std::string>(operation.OpData.value());
+
+							auto* keywordForm = Utils::GetFormFromString(keywordFormStr);
+							if (!keywordForm)
+							{
+								logger::warn("Invalid Form: '{}'.", keywordFormStr);
+								return;
+							}
+
+							auto* keyword = keywordForm->As<RE::BGSKeyword>();
+							if (!keyword)
+							{
+								logger::warn("'{}' is not a Keyword.", keywordFormStr);
+								return;
+							}
+
+							if (operation.OpType == OperationType::kAdd)
+							{
+								patchData.Keywords->AddKeywordVec.emplace_back(keyword);
+							}
+							else
+							{
+								patchData.Keywords->DeleteKeywordVec.emplace_back(keyword);
+							}
+						}
+					}
+				}
+				else if (a_configData.Element == ElementType::kObjectEffect)
+				{
+					const auto effectFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
+
+					if (effectFormStr == "null")
+					{
+						patchData.ObjectEffect = nullptr;
+					}
+					else
+					{
+						auto* effectForm = Utils::GetFormFromString(effectFormStr);
+						if (!effectForm)
+						{
+							logger::warn("Invalid Form: '{}'.", effectFormStr);
 							return;
 						}
 
-						auto* keyword = keywordForm->As<RE::BGSKeyword>();
-						if (!keyword) {
-							logger::warn("'{}' is not a Keyword.", keywordFormStr);
+						auto* objectEffect = effectForm->As<RE::EnchantmentItem>();
+						if (!objectEffect)
+						{
+							logger::warn("'{}' is not an Object Effect.", effectFormStr);
 							return;
 						}
 
-						if (operation.OpType == OperationType::kAdd) {
-							g_patchMap[armo].Keywords->AddKeywordVec.push_back(keyword);
-						}
-						else {
-							g_patchMap[armo].Keywords->DeleteKeywordVec.push_back(keyword);
-						}
+						patchData.ObjectEffect = objectEffect;
 					}
 				}
-			}
-			else if (a_configData.Element == ElementType::kObjectEffect) {
-				const auto effectFormStr = std::any_cast<std::string>(a_configData.AssignValue.value());
-
-				if (effectFormStr == "null") {
-					g_patchMap[armo].ObjectEffect = nullptr;
-				}
-				else {
-					auto* effectForm = Utils::GetFormFromString(effectFormStr);
-					if (!effectForm) {
-						logger::warn("Invalid Form: '{}'.", effectFormStr);
-						return;
+				else if (a_configData.Element == ElementType::kResistances)
+				{
+					if (!patchData.Resistances.has_value())
+					{
+						patchData.Resistances = PatchData::ResistancesData{};
 					}
 
-					auto* objectEffect = effectForm->As<RE::EnchantmentItem>();
-					if (!objectEffect) {
-						logger::warn("'{}' is not an Object Effect.", effectFormStr);
-						return;
-					}
-
-					g_patchMap[armo].ObjectEffect = objectEffect;
-				}
-			}
-			else if (a_configData.Element == ElementType::kResistances) {
-				if (!g_patchMap[armo].Resistances.has_value()) {
-					g_patchMap[armo].Resistances = PatchData::ResistancesData{};
-				}
-
-				for (const auto& operation : a_configData.Operations) {
-					if (operation.OpType == OperationType::kClear) {
-						g_patchMap[armo].Resistances->Clear = true;
-					}
-					else if (operation.OpType == OperationType::kAdd || operation.OpType == OperationType::kDelete) {
-						const auto resistanceData = std::any_cast<ConfigData::Operation::ResistanceData>(operation.OpData.value());
-
-						auto* form = Utils::GetFormFromString(resistanceData.Form);
-						if (!form) {
-							logger::warn("Invalid Form: '{}'.", resistanceData.Form);
-							continue;
+					for (const auto& operation : a_configData.Operations)
+					{
+						if (operation.OpType == OperationType::kClear)
+						{
+							patchData.Resistances->Clear = true;
 						}
+						else if (operation.OpType == OperationType::kAdd || operation.OpType == OperationType::kDelete)
+						{
+							const auto resistanceData = std::any_cast<ConfigData::Operation::ResistanceData>(operation.OpData.value());
 
-						auto* damageType = form->As<RE::BGSDamageType>();
-						if (!damageType) {
-							logger::warn("'{}' is not a Damage Type.", resistanceData.Form);
-							continue;
-						}
+							auto* form = Utils::GetFormFromString(resistanceData.Form);
+							if (!form)
+							{
+								logger::warn("Invalid Form: '{}'.", resistanceData.Form);
+								continue;
+							}
 
-						PatchData::ResistancesData::Resistance resistance{};
-						resistance.DamageType = damageType;
-						resistance.Value = resistanceData.Value;
+							auto* damageType = form->As<RE::BGSDamageType>();
+							if (!damageType)
+							{
+								logger::warn("'{}' is not a Damage Type.", resistanceData.Form);
+								continue;
+							}
 
-						if (operation.OpType == OperationType::kAdd) {
-							g_patchMap[armo].Resistances->AddResistanceVec.push_back(resistance);
-						}
-						else {
-							g_patchMap[armo].Resistances->DeleteResistanceVec.push_back(resistance);
+							PatchData::ResistancesData::Resistance resistance{};
+							resistance.DamageType = damageType;
+							resistance.Value = resistanceData.Value;
+
+							if (operation.OpType == OperationType::kAdd)
+							{
+								patchData.Resistances->AddResistanceVec.emplace_back(resistance);
+							}
+							else
+							{
+								patchData.Resistances->DeleteResistanceVec.emplace_back(resistance);
+							}
 						}
 					}
 				}
 			}
 		}
+
+		void PatchKeywords(RE::TESObjectARMO* a_armo, const PatchData::KeywordsData& a_keywordsData)
+		{
+			bool cleared = false;
+
+			if (a_keywordsData.Clear)
+			{
+				while (a_armo->numKeywords > 0)
+				{
+					a_armo->RemoveKeyword(a_armo->keywords[0]);
+				}
+				cleared = true;
+			}
+
+			// Delete
+			if (!cleared)
+			{
+				for (const auto& keyword : a_keywordsData.DeleteKeywordVec)
+				{
+					if (a_armo->HasKeyword(keyword))
+					{
+						a_armo->RemoveKeyword(keyword);
+					}
+				}
+			}
+
+			// Add
+			for (const auto& keyword : a_keywordsData.AddKeywordVec)
+			{
+				if (!a_armo->HasKeyword(keyword))
+				{
+					a_armo->AddKeyword(keyword);
+				}
+			}
+		}
+
+		void PatchResistances(RE::TESObjectARMO* a_armo, const PatchData::ResistancesData& a_resistancesData)
+		{
+			if (!a_armo->armorData.damageTypes)
+			{
+				using alloc_type = std::remove_pointer_t<decltype(a_armo->armorData.damageTypes)>;
+
+				auto* storage = RE::malloc(sizeof(alloc_type));
+				if (!storage)
+				{
+					logger::critical("Failed to allocate the Armor Resistances array.");
+					return;
+				}
+
+				a_armo->armorData.damageTypes = ::new (storage) alloc_type();
+			}
+
+			// Clear
+			if (a_resistancesData.Clear)
+			{
+				a_armo->armorData.damageTypes->clear();
+			}
+
+			// Delete
+			for (const auto& resistance : a_resistancesData.DeleteResistanceVec)
+			{
+				const auto it = std::find_if(a_armo->armorData.damageTypes->begin(), a_armo->armorData.damageTypes->end(), [&resistance](const RE::BSTTuple<RE::TESForm*, RE::BGSTypedFormValuePair::SharedVal>& a_elem) {
+					return a_elem.first == resistance.DamageType;
+				});
+
+				if (it != a_armo->armorData.damageTypes->end())
+				{
+					a_armo->armorData.damageTypes->erase(it);
+				}
+			}
+
+			// Add
+			for (const auto& resistance : a_resistancesData.AddResistanceVec)
+			{
+				const auto it = std::find_if(a_armo->armorData.damageTypes->begin(), a_armo->armorData.damageTypes->end(), [&resistance](const RE::BSTTuple<RE::TESForm*, RE::BGSTypedFormValuePair::SharedVal>& a_elem) {
+					return a_elem.first == resistance.DamageType && a_elem.second.i == resistance.Value;
+				});
+
+				if (it == a_armo->armorData.damageTypes->end())
+				{
+					a_armo->armorData.damageTypes->emplace_back(resistance.DamageType, resistance.Value);
+				}
+			}
+		}
+	}  // namespace
+
+	void ReadConfigs()
+	{
+		g_configVec = ConfigUtils::ReadConfigs<ArmorParser, Parsers::Statement<ConfigData>>(kTypeName);
 	}
 
-	void PatchKeywords(RE::TESObjectARMO* a_armo, const PatchData::KeywordsData& a_keywordsData) {
-		bool isCleared = false;
-
-		if (a_keywordsData.Clear) {
-			while (a_armo->numKeywords > 0) {
-				a_armo->RemoveKeyword(a_armo->keywords[0]);
-			}
-			isCleared = true;
-		}
-
-		// Delete
-		if (!isCleared) {
-			for (const auto& keyword : a_keywordsData.DeleteKeywordVec) {
-				if (a_armo->HasKeyword(keyword)) {
-					a_armo->RemoveKeyword(keyword);
-				}
-			}
-		}
-
-		// Add
-		for (const auto& keyword : a_keywordsData.AddKeywordVec) {
-			if (!a_armo->HasKeyword(keyword)) {
-				a_armo->AddKeyword(keyword);
-			}
-		}
-	}
-
-	void PatchResistances(RE::TESObjectARMO* a_armo, const PatchData::ResistancesData& a_resistancesData) {
-		if (!a_armo->armorData.damageTypes) {
-			using alloc_type = std::remove_pointer_t<decltype(a_armo->armorData.damageTypes)>;
-
-			auto* storage = RE::malloc(sizeof(alloc_type));
-			if (!storage) {
-				logger::critical("Failed to allocate the Armor Resistances array.");
-				return;
-			}
-
-			a_armo->armorData.damageTypes = ::new (storage) alloc_type();
-		}
-
-		// Clear
-		if (a_resistancesData.Clear) {
-			a_armo->armorData.damageTypes->clear();
-		}
-
-		// Delete
-		for (const auto& resistance : a_resistancesData.DeleteResistanceVec) {
-			auto iter = std::find_if(a_armo->armorData.damageTypes->begin(), a_armo->armorData.damageTypes->end(), [&resistance](const RE::BSTTuple<RE::TESForm*, RE::BGSTypedFormValuePair::SharedVal>& a_elem) {
-				return a_elem.first == resistance.DamageType;
-			});
-
-			if (iter != a_armo->armorData.damageTypes->end()) {
-				a_armo->armorData.damageTypes->erase(iter);
-			}
-		}
-
-		// Add
-		for (const auto& resistance : a_resistancesData.AddResistanceVec) {
-			auto iter = std::find_if(a_armo->armorData.damageTypes->begin(), a_armo->armorData.damageTypes->end(), [&resistance](const RE::BSTTuple<RE::TESForm*, RE::BGSTypedFormValuePair::SharedVal>& a_elem) {
-				return a_elem.first == resistance.DamageType && a_elem.second.i == resistance.Value;
-			});
-
-			if (iter == a_armo->armorData.damageTypes->end()) {
-				a_armo->armorData.damageTypes->emplace_back(resistance.DamageType, resistance.Value);
-			}
-		}
-	}
-
-	void Patch() {
-		logger::info("======================== Start preparing patch for {} ========================", TypeName);
+	void Patch()
+	{
+		logger::info("======================== Start preparing patch for {} ========================", kTypeName);
 
 		ConfigUtils::Prepare(g_configVec, Prepare);
 
-		logger::info("======================== Finished preparing patch for {} ========================", TypeName);
+		logger::info("======================== Finished preparing patch for {} ========================", kTypeName);
 		logger::info("");
 
-		logger::info("======================== Start patching for {} ========================", TypeName);
+		logger::info("======================== Start patching for {} ========================", kTypeName);
 
-		for (const auto& patchData : g_patchMap) {
-			if (patchData.second.ArmorRating.has_value()) {
-				patchData.first->armorData.rating = patchData.second.ArmorRating.value();
+		for (const auto& [armor, patchData] : g_patchMap)
+		{
+			if (patchData.ArmorRating.has_value())
+			{
+				armor->armorData.rating = patchData.ArmorRating.value();
 			}
-			if (patchData.second.BipedObjectSlots.has_value()) {
-				patchData.first->bipedModelData.bipedObjectSlots = patchData.second.BipedObjectSlots.value();
+			if (patchData.BipedObjectSlots.has_value())
+			{
+				armor->bipedModelData.bipedObjectSlots = patchData.BipedObjectSlots.value();
 			}
-			if (patchData.second.FullName.has_value()) {
-				patchData.first->fullName = patchData.second.FullName.value();
+			if (patchData.FullName.has_value())
+			{
+				armor->fullName = patchData.FullName.value();
 			}
-			if (patchData.second.Keywords.has_value()) {
-				PatchKeywords(patchData.first, patchData.second.Keywords.value());
+			if (patchData.Keywords.has_value())
+			{
+				PatchKeywords(armor, patchData.Keywords.value());
 			}
-			if (patchData.second.ObjectEffect.has_value()) {
-				patchData.first->formEnchanting = patchData.second.ObjectEffect.value();
+			if (patchData.ObjectEffect.has_value())
+			{
+				armor->formEnchanting = patchData.ObjectEffect.value();
 			}
-			if (patchData.second.Resistances.has_value()) {
-				PatchResistances(patchData.first, patchData.second.Resistances.value());
+			if (patchData.Resistances.has_value())
+			{
+				PatchResistances(armor, patchData.Resistances.value());
 			}
 		}
 
-		logger::info("======================== Finished patching for {} ========================", TypeName);
+		logger::info("======================== Finished patching for {} ========================", kTypeName);
 		logger::info("");
 
 		g_configVec.clear();
 		g_patchMap.clear();
 	}
-}
+}  // namespace Armors

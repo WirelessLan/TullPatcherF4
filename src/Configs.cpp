@@ -4,8 +4,10 @@
 
 #include "Utils.h"
 
-namespace Configs {
-	ConfigReader::ConfigReader(std::string_view a_path) : currentTokenIndex_(0), lastTokenIndex_(0) {
+namespace Configs
+{
+	ConfigReader::ConfigReader(std::string_view a_path) : currentTokenIndex_(0), lastTokenIndex_(0)
+	{
 		std::ifstream configFile;
 
 		configFile.open(a_path);
@@ -23,11 +25,13 @@ namespace Configs {
 		ParseTokens();
 	}
 
-	bool ConfigReader::EndOfFile() const {
+	bool ConfigReader::EndOfFile() const
+	{
 		return currentTokenIndex_ >= tokens_.size();
 	}
 
-	std::string_view ConfigReader::GetToken() {
+	std::string_view ConfigReader::GetToken()
+	{
 		if (EndOfFile())
 		{
 			return {};
@@ -36,7 +40,8 @@ namespace Configs {
 		return tokens_[currentTokenIndex_++].value;
 	}
 
-	std::string_view ConfigReader::Peek() {
+	std::string_view ConfigReader::Peek()
+	{
 		if (EndOfFile())
 		{
 			return {};
@@ -45,20 +50,24 @@ namespace Configs {
 		return tokens_[currentTokenIndex_].value;
 	}
 
-	std::size_t ConfigReader::GetLastLine() const {
+	std::size_t ConfigReader::GetLastLine() const
+	{
 		return tokens_[lastTokenIndex_].line;
 	}
 
-	std::size_t ConfigReader::GetLastLineIndex() const {
+	std::size_t ConfigReader::GetLastLineIndex() const
+	{
 		return tokens_[lastTokenIndex_].column;
 	}
 
-	bool ConfigReader::IsDelimiter(char ch) const {
+	bool ConfigReader::IsDelimiter(char ch) const
+	{
 		return ch == '.' || ch == ',' || ch == '=' || ch == '!' || ch == '&' || ch == '|' || ch == ';' ||
 		       ch == '(' || ch == ')' || ch == '{' || ch == '}' || ch == '[' || ch == ']';
 	}
 
-	void ConfigReader::ParseTokens() {
+	void ConfigReader::ParseTokens()
+	{
 		std::size_t index = 0;
 		std::size_t line = 1;
 		std::size_t column = 1;
@@ -100,7 +109,7 @@ namespace Configs {
 				const auto startLine = line;
 				const auto startColumn = column++;
 
-                while (index < fileLength)
+				while (index < fileLength)
 				{
 					const auto current = fileContents_[index];
 					if (current == '\"')
@@ -163,4 +172,4 @@ namespace Configs {
 			}
 		}
 	}
-}
+}  // namespace Configs

@@ -1,6 +1,7 @@
 #pragma once
 
-namespace ObjectModifications {
+namespace ObjectModifications
+{
 	void ReadConfigs();
 	void Patch();
-}
+}  // namespace ObjectModifications

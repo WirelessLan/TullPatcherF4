@@ -1,6 +1,7 @@
 #pragma once
 
-namespace Armors {
+namespace Armors
+{
 	void ReadConfigs();
 	void Patch();
-}
+}  // namespace Armors

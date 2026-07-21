@@ -2,8 +2,10 @@
 
 #include "Utils.h"
 
-namespace Parsers {
-	bool EvaluateCondition(const Condition& a_condition) {
+namespace Parsers
+{
+	bool EvaluateCondition(const Condition& a_condition)
+	{
 		if (a_condition.Name == kPluginExistsConditionName)
 		{
 			return Utils::IsPluginExists(a_condition.Params);
@@ -15,13 +17,15 @@ namespace Parsers {
 		return false;
 	}
 
-	bool EvaluateConditions(const std::vector<ConditionToken>& a_conditions) {
+	bool EvaluateConditions(const std::vector<ConditionToken>& a_conditions)
+	{
 		std::stack<ConditionToken> opStack;
 		std::queue<ConditionToken> outQueue;
 
 		for (const auto& conditionToken : a_conditions)
 		{
-			switch (conditionToken.Type) {
+			switch (conditionToken.Type)
+			{
 			case ConditionToken::TokenType::kCondition:
 				outQueue.push(conditionToken);
 				break;
@@ -62,8 +66,7 @@ namespace Parsers {
 					continue;
 				}
 
-				if (opStack.top().Type == ConditionToken::TokenType::kCondition || 
-					opStack.top().Type == ConditionToken::TokenType::kParenthesis)
+				if (opStack.top().Type == ConditionToken::TokenType::kCondition || opStack.top().Type == ConditionToken::TokenType::kParenthesis)
 				{
 					opStack.push(conditionToken);
 				}
@@ -105,7 +108,7 @@ namespace Parsers {
 
 		while (!outQueue.empty())
 		{
-			auto token = outQueue.front();
+			const auto token = outQueue.front();
 			outQueue.pop();
 
 			if (token.Type == ConditionToken::TokenType::kCondition)
@@ -128,9 +131,9 @@ namespace Parsers {
 						return false;
 					}
 
-					auto right = evalStack.top();
+					const auto right = evalStack.top();
 					evalStack.pop();
-					auto left = evalStack.top();
+					const auto left = evalStack.top();
 					evalStack.pop();
 
 					if (token.Operator == "&&")
@@ -150,7 +153,7 @@ namespace Parsers {
 						return false;
 					}
 
-					auto right = evalStack.top();
+					const auto right = evalStack.top();
 					evalStack.pop();
 
 					evalStack.push(!right);
@@ -171,4 +174,4 @@ namespace Parsers {
 
 		return evalStack.top();
 	}
-}
+}  // namespace Parsers

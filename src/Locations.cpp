@@ -1,441 +1,538 @@
 #include "Locations.h"
 
-#include <unordered_set>
 #include <regex>
+#include <unordered_set>
 
 #include "ConfigUtils.h"
 #include "Parsers.h"
 #include "Utils.h"
 
-namespace Locations {
-	constexpr std::string_view TypeName = "Location";
+namespace Locations
+{
+	namespace
+	{
+		constexpr std::string_view kTypeName = "Location";
 
-	enum class FilterType {
-		kFormID
-	};
-
-	std::string_view FilterTypeToString(FilterType a_value) {
-		switch (a_value) {
-		case FilterType::kFormID: return "FilterByFormID";
-		default: return std::string_view{};
-		}
-	}
-
-	enum class ElementType {
-		kFullName,
-		kKeywords
-	};
-
-	std::string_view ElementTypeToString(ElementType a_value) {
-		switch (a_value) {
-		case ElementType::kFullName: return "FullName";
-		case ElementType::kKeywords: return "Keywords";
-		default: return std::string_view{};
-		}
-	}
-
-	enum class OperationType {
-		kClear,
-		kAdd,
-		kAddIfNotExists,
-		kDelete
-	};
-
-	std::string_view OperationTypeToString(OperationType a_value) {
-		switch (a_value) {
-		case OperationType::kClear: return "Clear";
-		case OperationType::kAdd: return "Add";
-		case OperationType::kAddIfNotExists: return "AddIfNotExists";
-		case OperationType::kDelete: return "Delete";
-		default: return std::string_view{};
-		}
-	}
-
-	struct ConfigData {
-		struct Operation {
-			OperationType OpType;
-			std::optional<std::string> OpForm;
+		enum class FilterType
+		{
+			kFormID
 		};
 
-		FilterType Filter;
-		std::string FilterForm;
-		ElementType Element;
-		std::optional<std::string> AssignValue;
-		std::vector<Operation> Operations;
-	};
+		std::string_view FilterTypeToString(FilterType a_value)
+		{
+			switch (a_value)
+			{
+			case FilterType::kFormID:
+				return "FilterByFormID";
+			default:
+				return std::string_view{};
+			}
+		}
 
-	struct PatchData {
-		struct KeywordsData {
-			bool Clear = false;
-			std::vector<RE::BGSKeyword*> AddKeywordVec;
-			std::unordered_set<RE::BGSKeyword*> AddUniqueKeywordSet;
-			std::vector<RE::BGSKeyword*> DeleteKeywordVec;
+		enum class ElementType
+		{
+			kFullName,
+			kKeywords
 		};
 
-		std::optional<std::string> FullName;
-		std::optional<KeywordsData> Keywords;
-	};
-
-	std::vector<Parsers::Statement<ConfigData>> g_configVec;
-	std::unordered_map<RE::BGSLocation*, PatchData> g_patchMap;
-
-	class LocationParser : public Parsers::Parser<ConfigData> {
-	public:
-		LocationParser(std::string_view a_configPath) : Parsers::Parser<ConfigData>(a_configPath) {}
-
-	protected:
-		std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override {
-			ConfigData configData{};
-
-			if (!ParseFilter(configData)) {
-				return std::nullopt;
+		std::string_view ElementTypeToString(ElementType a_value)
+		{
+			switch (a_value)
+			{
+			case ElementType::kFullName:
+				return "FullName";
+			case ElementType::kKeywords:
+				return "Keywords";
+			default:
+				return std::string_view{};
 			}
+		}
 
-			auto token = reader.GetToken();
-			if (token != ".") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
+		enum class OperationType
+		{
+			kClear,
+			kAdd,
+			kAddIfNotExists,
+			kDelete
+		};
+
+		std::string_view OperationTypeToString(OperationType a_value)
+		{
+			switch (a_value)
+			{
+			case OperationType::kClear:
+				return "Clear";
+			case OperationType::kAdd:
+				return "Add";
+			case OperationType::kAddIfNotExists:
+				return "AddIfNotExists";
+			case OperationType::kDelete:
+				return "Delete";
+			default:
+				return std::string_view{};
 			}
+		}
 
-			if (!ParseElement(configData)) {
-				return std::nullopt;
-			}
+		struct ConfigData
+		{
+			struct Operation
+			{
+				OperationType OpType;
+				std::optional<std::string> OpForm;
+			};
 
-			token = reader.Peek();
-			if (token == "=") {
-				if (!ParseAssignment(configData)) {
+			FilterType Filter;
+			std::string FilterForm;
+			ElementType Element;
+			std::optional<std::string> AssignValue;
+			std::vector<Operation> Operations;
+		};
+
+		struct PatchData
+		{
+			struct KeywordsData
+			{
+				bool Clear = false;
+				std::vector<RE::BGSKeyword*> AddKeywordVec;
+				std::unordered_set<RE::BGSKeyword*> AddUniqueKeywordSet;
+				std::vector<RE::BGSKeyword*> DeleteKeywordVec;
+			};
+
+			std::optional<std::string> FullName;
+			std::optional<KeywordsData> Keywords;
+		};
+
+		std::vector<Parsers::Statement<ConfigData>> g_configVec;
+		std::unordered_map<RE::BGSLocation*, PatchData> g_patchMap;
+
+		class LocationParser : public Parsers::Parser<ConfigData>
+		{
+		public:
+			LocationParser(std::string_view a_configPath) : Parsers::Parser<ConfigData>(a_configPath) {}
+
+		protected:
+			std::optional<Parsers::Statement<ConfigData>> ParseExpressionStatement() override
+			{
+				ConfigData configData{};
+
+				if (!ParseFilter(configData))
+				{
 					return std::nullopt;
 				}
-			}
-			else {
-				do {
-					token = reader.GetToken();
-					if (token != ".") {
-						logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
-						return std::nullopt;
-					}
 
-					if (!ParseOperation(configData)) {
+				auto token = reader.GetToken();
+				if (token != ".")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return std::nullopt;
+				}
+
+				if (!ParseElement(configData))
+				{
+					return std::nullopt;
+				}
+
+				token = reader.Peek();
+				if (token == "=")
+				{
+					if (!ParseAssignment(configData))
+					{
 						return std::nullopt;
 					}
 				}
-				while (reader.Peek() == ".");
-			}
+				else
+				{
+					do
+					{
+						token = reader.GetToken();
+						if (token != ".")
+						{
+							logger::warn("Line {}, Col {}: Syntax error. Expected '.'.", reader.GetLastLine(), reader.GetLastLineIndex());
+							return std::nullopt;
+						}
 
-			token = reader.GetToken();
-			if (token != ";") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return std::nullopt;
-			}
-
-			return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
-		}
-
-		void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override {
-			auto indent = std::string(a_indent * 4, ' ');
-
-			switch (a_configData.Element) {
-			case ElementType::kFullName:
-				logger::info("{}{}({}).{} = \"{}\";", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
-					ElementTypeToString(a_configData.Element), a_configData.AssignValue.value());
-				break;
-
-			case ElementType::kKeywords:
-				logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
-				for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); opIndex++) {
-					std::string opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
-						a_configData.Operations[opIndex].OpForm.has_value() ? a_configData.Operations[opIndex].OpForm.value() : "");
-
-					if (opIndex == a_configData.Operations.size() - 1) {
-						opLog += ";";
-					}
-
-					logger::info("{}    {}", indent, opLog);
+						if (!ParseOperation(configData))
+						{
+							return std::nullopt;
+						}
+					} while (reader.Peek() == ".");
 				}
-				break;
-			}
-		}
 
-		bool ParseFilter(ConfigData& a_configData) {
-			auto token = reader.GetToken();
-			if (token == "FilterByFormID") {
-				a_configData.Filter = FilterType::kFormID;
-			}
-			else {
-				logger::warn("Line {}, Col {}: Invalid FilterName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-				return false;
+				token = reader.GetToken();
+				if (token != ";")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected ';'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return std::nullopt;
+				}
+
+				return Parsers::Statement<ConfigData>::CreateExpressionStatement(configData);
 			}
 
-			token = reader.GetToken();
-			if (token != "(") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '('.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
+			void PrintExpressionStatement(const ConfigData& a_configData, int a_indent) override
+			{
+				auto indent = std::string(a_indent * 4, ' ');
+
+				switch (a_configData.Element)
+				{
+				case ElementType::kFullName:
+					logger::info("{}{}({}).{} = \"{}\";", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm,
+						ElementTypeToString(a_configData.Element), a_configData.AssignValue.value());
+					break;
+
+				case ElementType::kKeywords:
+					logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
+					for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); ++opIndex)
+					{
+						auto opLog = fmt::format(".{}({})", OperationTypeToString(a_configData.Operations[opIndex].OpType),
+							a_configData.Operations[opIndex].OpForm.has_value() ? a_configData.Operations[opIndex].OpForm.value() : "");
+
+						if (opIndex == a_configData.Operations.size() - 1)
+						{
+							opLog += ";";
+						}
+
+						logger::info("{}    {}", indent, opLog);
+					}
+					break;
+				}
 			}
 
-			const auto filterFormOpt = ParseForm();
-			if (!filterFormOpt.has_value()) {
-				return false;
-			}
+			bool ParseFilter(ConfigData& a_configData)
+			{
+				auto token = reader.GetToken();
+				if (token == "FilterByFormID")
+				{
+					a_configData.Filter = FilterType::kFormID;
+				}
+				else
+				{
+					logger::warn("Line {}, Col {}: Invalid FilterName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					return false;
+				}
 
-			a_configData.FilterForm = filterFormOpt.value();
+				token = reader.GetToken();
+				if (token != "(")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected '('.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return false;
+				}
 
-			token = reader.GetToken();
-			if (token != ")") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected ')'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
-			}
-
-			return true;
-		}
-
-		bool ParseElement(ConfigData& a_configData) {
-			auto token = reader.GetToken();
-			if (token == "FullName") {
-				a_configData.Element = ElementType::kFullName;
-			}
-			else if (token == "Keywords") {
-				a_configData.Element = ElementType::kKeywords;
-			}
-			else {
-				logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-				return false;
-			}
-
-			return true;
-		}
-
-		bool ParseAssignment(ConfigData& a_config) {
-			auto token = reader.GetToken();
-			if (token != "=") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '='.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
-			}
-
-			if (a_config.Element == ElementType::kFullName) {
-				const auto fullNameOpt = ParseString();
-				if (!fullNameOpt.has_value())
+				const auto filterFormOpt = ParseForm();
+				if (!filterFormOpt.has_value())
 				{
 					return false;
 				}
 
-				a_config.AssignValue = fullNameOpt.value();
-			}
-			else {
-				logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
-				return false;
-			}
+				a_configData.FilterForm = filterFormOpt.value();
 
-			return true;
-		}
-
-		bool ParseOperation(ConfigData& a_configData) {
-			ConfigData::Operation newOp{};
-
-			auto token = reader.GetToken();
-			if (token == "Clear") {
-				newOp.OpType = OperationType::kClear;
-			}
-			else if (token == "Add") {
-				newOp.OpType = OperationType::kAdd;
-			}
-			else if (token == "AddIfNotExists") {
-				newOp.OpType = OperationType::kAddIfNotExists;
-			}
-			else if (token == "Delete") {
-				newOp.OpType = OperationType::kDelete;
-			}
-			else {
-				logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
-				return false;
-			}
-
-			auto isValidOperation = [](ElementType elem, OperationType op) -> bool {
-				if (elem == ElementType::kKeywords) {
-					return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kAddIfNotExists || op == OperationType::kDelete;
-				}
-				return false;
-			}(a_configData.Element, newOp.OpType);
-
-			if (!isValidOperation) {
-				logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
-				return false;
-			}
-
-			token = reader.GetToken();
-			if (token != "(") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected '('.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
-			}
-
-			if (a_configData.Element == ElementType::kKeywords) {
-				if (newOp.OpType != OperationType::kClear) {
-					const auto formOpt = ParseForm();
-					if (!formOpt.has_value()) {
-						return false;
-					}
-					newOp.OpForm = formOpt.value();
-				}
-			}
-
-			token = reader.GetToken();
-			if (token != ")") {
-				logger::warn("Line {}, Col {}: Syntax error. Expected ')'.", reader.GetLastLine(), reader.GetLastLineIndex());
-				return false;
-			}
-
-			a_configData.Operations.push_back(newOp);
-
-			return true;
-		}
-	};
-
-	void ReadConfigs() {
-		g_configVec = ConfigUtils::ReadConfigs<LocationParser, Parsers::Statement<ConfigData>>(TypeName);
-	}
-
-	void Prepare(const ConfigData& a_configData) {
-		if (a_configData.Filter == FilterType::kFormID) {
-			auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
-			if (!filterForm) {
-				logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
-				return;
-			}
-
-			auto* location = filterForm->As<RE::BGSLocation>();
-			if (!location) {
-				logger::warn("'{}' is not a Location.", a_configData.FilterForm);
-				return;
-			}
-
-			auto& patchData = g_patchMap[location];
-
-			if (a_configData.Element == ElementType::kFullName) {
-				patchData.FullName = a_configData.AssignValue.value();
-			}
-			else if (a_configData.Element == ElementType::kKeywords) {
-				if (!patchData.Keywords.has_value()) {
-					patchData.Keywords = PatchData::KeywordsData{};
+				token = reader.GetToken();
+				if (token != ")")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected ')'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return false;
 				}
 
-				for (const auto& op : a_configData.Operations) {
-					if (op.OpType == OperationType::kClear) {
-						patchData.Keywords->Clear = true;
-					}
-					else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kAddIfNotExists || op.OpType == OperationType::kDelete) {
-						auto* opForm = Utils::GetFormFromString(op.OpForm.value());
-						if (!opForm) {
-							logger::warn("Invalid Form: '{}'.", op.OpForm.value());
-							continue;
-						}
-
-						auto* keywordForm = opForm->As<RE::BGSKeyword>();
-						if (!keywordForm) {
-							logger::warn("'{}' is not a Keyword.", op.OpForm.value());
-							continue;
-						}
-
-						if (op.OpType == OperationType::kAdd) {
-							patchData.Keywords->AddKeywordVec.push_back(keywordForm);
-						}
-						else if (op.OpType == OperationType::kAddIfNotExists) {
-							patchData.Keywords->AddUniqueKeywordSet.insert(keywordForm);
-						}
-						else {
-							patchData.Keywords->DeleteKeywordVec.push_back(keywordForm);
-						}
-					}
-				}
-			}
-		}
-	}
-
-	void ClearKeywords(RE::BGSLocation* a_location) {
-		if (!a_location) {
-			return;
-		}
-
-		while (a_location->numKeywords > 0) {
-			a_location->RemoveKeyword(a_location->keywords[0]);
-		}
-	}
-
-	bool KeywordExists(RE::BGSLocation* a_location, RE::BGSKeyword* a_keyword) {
-		for (std::uint32_t keywordIndex = 0; keywordIndex < a_location->numKeywords; keywordIndex++) {
-			if (a_location->keywords[keywordIndex] == a_keyword) {
 				return true;
 			}
+
+			bool ParseElement(ConfigData& a_configData)
+			{
+				const auto token = reader.GetToken();
+				if (token == "FullName")
+				{
+					a_configData.Element = ElementType::kFullName;
+				}
+				else if (token == "Keywords")
+				{
+					a_configData.Element = ElementType::kKeywords;
+				}
+				else
+				{
+					logger::warn("Line {}, Col {}: Invalid ElementName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					return false;
+				}
+
+				return true;
+			}
+
+			bool ParseAssignment(ConfigData& a_config)
+			{
+				auto token = reader.GetToken();
+				if (token != "=")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected '='.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return false;
+				}
+
+				if (a_config.Element == ElementType::kFullName)
+				{
+					const auto fullNameOpt = ParseString();
+					if (!fullNameOpt.has_value())
+					{
+						return false;
+					}
+
+					a_config.AssignValue = fullNameOpt.value();
+				}
+				else
+				{
+					logger::warn("Line {}, Col {}: Invalid Assignment for '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_config.Element));
+					return false;
+				}
+
+				return true;
+			}
+
+			bool ParseOperation(ConfigData& a_configData)
+			{
+				ConfigData::Operation newOp{};
+
+				auto token = reader.GetToken();
+				if (token == "Clear")
+				{
+					newOp.OpType = OperationType::kClear;
+				}
+				else if (token == "Add")
+				{
+					newOp.OpType = OperationType::kAdd;
+				}
+				else if (token == "AddIfNotExists")
+				{
+					newOp.OpType = OperationType::kAddIfNotExists;
+				}
+				else if (token == "Delete")
+				{
+					newOp.OpType = OperationType::kDelete;
+				}
+				else
+				{
+					logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
+					return false;
+				}
+
+				auto isValidOperation = [](ElementType elem, OperationType op) -> bool {
+					if (elem == ElementType::kKeywords)
+					{
+						return op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kAddIfNotExists || op == OperationType::kDelete;
+					}
+					return false;
+				}(a_configData.Element, newOp.OpType);
+
+				if (!isValidOperation)
+				{
+					logger::warn("Line {}, Col {}: Invalid Operation '{}.{}()'.", reader.GetLastLine(), reader.GetLastLineIndex(), ElementTypeToString(a_configData.Element), OperationTypeToString(newOp.OpType));
+					return false;
+				}
+
+				token = reader.GetToken();
+				if (token != "(")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected '('.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return false;
+				}
+
+				if (a_configData.Element == ElementType::kKeywords)
+				{
+					if (newOp.OpType != OperationType::kClear)
+					{
+						const auto formOpt = ParseForm();
+						if (!formOpt.has_value())
+						{
+							return false;
+						}
+						newOp.OpForm = formOpt.value();
+					}
+				}
+
+				token = reader.GetToken();
+				if (token != ")")
+				{
+					logger::warn("Line {}, Col {}: Syntax error. Expected ')'.", reader.GetLastLine(), reader.GetLastLineIndex());
+					return false;
+				}
+
+				a_configData.Operations.emplace_back(newOp);
+
+				return true;
+			}
+		};
+
+		void Prepare(const ConfigData& a_configData)
+		{
+			if (a_configData.Filter == FilterType::kFormID)
+			{
+				auto* filterForm = Utils::GetFormFromString(a_configData.FilterForm);
+				if (!filterForm)
+				{
+					logger::warn("Invalid FilterForm: '{}'.", a_configData.FilterForm);
+					return;
+				}
+
+				auto* location = filterForm->As<RE::BGSLocation>();
+				if (!location)
+				{
+					logger::warn("'{}' is not a Location.", a_configData.FilterForm);
+					return;
+				}
+
+				auto& patchData = g_patchMap[location];
+
+				if (a_configData.Element == ElementType::kFullName)
+				{
+					patchData.FullName = a_configData.AssignValue.value();
+				}
+				else if (a_configData.Element == ElementType::kKeywords)
+				{
+					if (!patchData.Keywords.has_value())
+					{
+						patchData.Keywords = PatchData::KeywordsData{};
+					}
+
+					for (const auto& op : a_configData.Operations)
+					{
+						if (op.OpType == OperationType::kClear)
+						{
+							patchData.Keywords->Clear = true;
+						}
+						else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kAddIfNotExists || op.OpType == OperationType::kDelete)
+						{
+							auto* opForm = Utils::GetFormFromString(op.OpForm.value());
+							if (!opForm)
+							{
+								logger::warn("Invalid Form: '{}'.", op.OpForm.value());
+								continue;
+							}
+
+							auto* keywordForm = opForm->As<RE::BGSKeyword>();
+							if (!keywordForm)
+							{
+								logger::warn("'{}' is not a Keyword.", op.OpForm.value());
+								continue;
+							}
+
+							if (op.OpType == OperationType::kAdd)
+							{
+								patchData.Keywords->AddKeywordVec.emplace_back(keywordForm);
+							}
+							else if (op.OpType == OperationType::kAddIfNotExists)
+							{
+								patchData.Keywords->AddUniqueKeywordSet.insert(keywordForm);
+							}
+							else
+							{
+								patchData.Keywords->DeleteKeywordVec.emplace_back(keywordForm);
+							}
+						}
+					}
+				}
+			}
 		}
-		return false;
-	}
 
-	void PatchKeywords(RE::BGSLocation* a_location, const PatchData::KeywordsData& a_keywordsData) {
-		bool isCleared = false;
+		void ClearKeywords(RE::BGSLocation* a_location)
+		{
+			if (!a_location)
+			{
+				return;
+			}
 
-		// Clear
-		if (a_keywordsData.Clear) {
-			ClearKeywords(a_location);
-			isCleared = true;
+			while (a_location->numKeywords > 0)
+			{
+				a_location->RemoveKeyword(a_location->keywords[0]);
+			}
 		}
 
-		// Delete
-		if (!isCleared && !a_keywordsData.DeleteKeywordVec.empty()) {
-			std::vector<RE::BGSKeyword*> delVec;
-			for (const auto& delKywd : a_keywordsData.DeleteKeywordVec) {
-				if (KeywordExists(a_location, delKywd)) {
-					delVec.push_back(delKywd);
+		bool KeywordExists(RE::BGSLocation* a_location, RE::BGSKeyword* a_keyword)
+		{
+			for (std::uint32_t keywordIndex = 0; keywordIndex < a_location->numKeywords; ++keywordIndex)
+			{
+				if (a_location->keywords[keywordIndex] == a_keyword)
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
+		void PatchKeywords(RE::BGSLocation* a_location, const PatchData::KeywordsData& a_keywordsData)
+		{
+			bool cleared = false;
+
+			// Clear
+			if (a_keywordsData.Clear)
+			{
+				ClearKeywords(a_location);
+				cleared = true;
+			}
+
+			// Delete
+			if (!cleared)
+			{
+				std::vector<RE::BGSKeyword*> delVec;
+
+				for (const auto& delKywd : a_keywordsData.DeleteKeywordVec)
+				{
+					if (KeywordExists(a_location, delKywd))
+					{
+						delVec.emplace_back(delKywd);
+					}
+				}
+
+				for (auto kywd : delVec)
+				{
+					a_location->RemoveKeyword(kywd);
 				}
 			}
 
-			for (auto kywd : delVec) {
-				a_location->RemoveKeyword(kywd);
-			}
-		}
-
-		// Add
-		if (!a_keywordsData.AddKeywordVec.empty()) {
-			for (const auto& addKywd : a_keywordsData.AddKeywordVec) {
+			// Add
+			for (const auto& addKywd : a_keywordsData.AddKeywordVec)
+			{
 				a_location->AddKeyword(addKywd);
 			}
-		}
 
-		// Add if not exists
-		if (!a_keywordsData.AddUniqueKeywordSet.empty()) {
-			for (const auto& addKywd : a_keywordsData.AddUniqueKeywordSet) {
-				if (!KeywordExists(a_location, addKywd)) {
+			// Add if not exists
+			for (const auto& addKywd : a_keywordsData.AddUniqueKeywordSet)
+			{
+				if (!KeywordExists(a_location, addKywd))
+				{
 					a_location->AddKeyword(addKywd);
 				}
 			}
 		}
+	}  // namespace
+
+	void ReadConfigs()
+	{
+		g_configVec = ConfigUtils::ReadConfigs<LocationParser, Parsers::Statement<ConfigData>>(kTypeName);
 	}
 
-	void Patch(RE::BGSLocation* a_location, const PatchData& a_patchData) {
-		if (a_patchData.FullName.has_value()) {
-			a_location->fullName = a_patchData.FullName.value();
-		}
-
-		if (a_patchData.Keywords.has_value()) {
-			PatchKeywords(a_location, a_patchData.Keywords.value());
-		}
-	}
-
-	void Patch() {
-		logger::info("======================== Start preparing patch for {} ========================", TypeName);
+	void Patch()
+	{
+		logger::info("======================== Start preparing patch for {} ========================", kTypeName);
 
 		ConfigUtils::Prepare(g_configVec, Prepare);
 
-		logger::info("======================== Finished preparing patch for {} ========================", TypeName);
+		logger::info("======================== Finished preparing patch for {} ========================", kTypeName);
 		logger::info("");
 
-		logger::info("======================== Start patching for {} ========================", TypeName);
+		logger::info("======================== Start patching for {} ========================", kTypeName);
 
-		for (const auto& patchData : g_patchMap) {
-			Patch(patchData.first, patchData.second);
+		for (const auto& [location, patchData] : g_patchMap)
+		{
+			if (patchData.FullName.has_value())
+			{
+				location->fullName = patchData.FullName.value();
+			}
+
+			if (patchData.Keywords.has_value())
+			{
+				PatchKeywords(location, patchData.Keywords.value());
+			}
 		}
 
-		logger::info("======================== Finished patching for {} ========================", TypeName);
+		logger::info("======================== Finished patching for {} ========================", kTypeName);
 		logger::info("");
 
 		g_configVec.clear();
 		g_patchMap.clear();
 	}
-}
+}  // namespace Locations

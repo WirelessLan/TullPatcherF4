@@ -1,6 +1,7 @@
 #pragma once
 
-namespace LeveledLists {
+namespace LeveledLists
+{
 	void ReadConfigs();
 	void Patch();
-}
+}  // namespace LeveledLists

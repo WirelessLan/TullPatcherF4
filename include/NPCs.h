@@ -1,6 +1,7 @@
 #pragma once
 
-namespace NPCs {
+namespace NPCs
+{
 	void ReadConfigs();
 	void Install();
-}
+}  // namespace NPCs

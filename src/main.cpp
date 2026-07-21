@@ -1,9 +1,9 @@
 #include "ArmorAddons.h"
 #include "Armors.h"
+#include "CObjs.h"
 #include "Cells.h"
 #include "CombatStyles.h"
 #include "Containers.h"
-#include "CObjs.h"
 #include "DefaultObjectManagers.h"
 #include "FormLists.h"
 #include "ImageSpaceAdapters.h"
@@ -18,7 +18,7 @@
 #include "Quests.h"
 #include "Races.h"
 #include "Weapons.h"
-#include "Worldspaces.h"
+#include "WorldSpaces.h"
 
 namespace
 {
@@ -55,7 +55,8 @@ namespace
 
 	void OnF4SEMessage(F4SE::MessagingInterface::Message* msg)
 	{
-		switch (msg->type) {
+		switch (msg->type)
+		{
 		case F4SE::MessagingInterface::kGameDataReady:
 			Patch();
 			break;
@@ -68,7 +69,8 @@ namespace
 		auto sink = std::make_shared<spdlog::sinks::msvc_sink_mt>();
 #else
 		auto path = logger::log_directory();
-		if (!path) {
+		if (!path)
+		{
 			return false;
 		}
 
@@ -94,13 +96,15 @@ namespace
 		a_info->name = Version::PROJECT.data();
 		a_info->version = Version::MAJOR;
 
-		if (a_f4se->IsEditor()) {
+		if (a_f4se->IsEditor())
+		{
 			logger::critical("loaded in editor");
 			return false;
 		}
 
 		const auto ver = a_f4se->RuntimeVersion();
-		if (ver < F4SE::RUNTIME_1_10_162) {
+		if (ver < F4SE::RUNTIME_1_10_162)
+		{
 			logger::critical("unsupported runtime v{}", ver.string());
 			return false;
 		}
@@ -144,10 +148,11 @@ namespace
 		NPCs::Install();
 
 		const F4SE::MessagingInterface* message = F4SE::GetMessagingInterface();
-		if (message) {
+		if (message)
+		{
 			message->RegisterListener(OnF4SEMessage);
 		}
 
 		return true;
 	}
-}
+}  // namespace
